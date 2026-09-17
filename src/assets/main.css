@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-base;
+  }
+
+  body {
+    @apply text-slate-200 font-sans antialiased overflow-x-hidden;
+  }
+
+  /* Campos escuros: faz o navegador desenhar setas de select e o
+     seletor de arquivo no tom certo, em vez do branco padrão. */
+  input,
+  select,
+  textarea {
+    color-scheme: dark;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-800;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-700;
+  }
+}
+
+@layer components {
+  /* Cartão de vidro: a assinatura visual do GeoRural DataHub. */
+  .glass {
+    @apply rounded-2xl border border-slate-800/80 bg-slate-900/45 backdrop-blur-lg;
+  }
+
+  /* Manchas de luz do fundo. Ficam atrás de tudo e não recebem clique. */
+  .glow {
+    @apply pointer-events-none fixed z-0 rounded-full;
+    filter: blur(110px);
+  }
+
+  .label {
+    @apply mb-1.5 block text-[11px] font-medium text-slate-400;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm
+           text-slate-200 placeholder:text-slate-600
+           transition focus:border-cyan-500/60 focus:outline-none focus:ring-2 focus:ring-cyan-500/30
+           disabled:opacity-50;
+  }
+}

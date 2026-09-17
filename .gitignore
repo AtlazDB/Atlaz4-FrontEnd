@@ -1,0 +1,29 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Arquivos enviados para o mock durante os testes
+mock/uploads/*
+!mock/uploads/.gitkeep
+
+# Arquivos grandes gerados por `npm run arquivo-teste`
+exemplos/
+
+# Material de apoio local: protótipos em HTML e rascunhos.
+# São especificação visual, não código da aplicação.
+georural_datahub_*.html
+Claude outputs/
+
+.env
+.env.development
+.env.production
+.env.*.local
+!.env.example
+
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.log
+npm-debug.log*
