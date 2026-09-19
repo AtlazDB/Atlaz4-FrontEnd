@@ -57,7 +57,7 @@ async function carregar() {
   carregando.value = true
   erro.value = ''
   try {
-    // TODO 7 — fontes.value = await listarFontes()
+    fontes.value = await listarFontes()
   } catch (e) {
     erro.value = e.message
   } finally {
@@ -81,7 +81,11 @@ async function carregar() {
 async function salvarFonte(dados) {
   salvando.value = true
   try {
-    // TODO 8
+    const nova = await criarFonte(dados)
+    fontes.value.unshift(nova)
+    mostrandoForm.value = false
+    formRef.value.limpar()
+    avisar('ok', 'Fonte cadastrada.')
   } catch (e) {
     avisar('erro', e.message)
   } finally {
@@ -120,7 +124,16 @@ async function enviar(arquivo) {
   enviando.value = true
   progresso.value = 0
   try {
-    // TODO 9
+    const { fonte } = await enviarArquivo(selecionada.value.id, arquivo, (pct) => {
+      progresso.value = pct
+    })
+
+    const i = fontes.value.findIndex((f) => f.id === fonte.id)
+    if (i !== -1) fontes.value[i] = fonte
+    selecionada.value = fonte
+
+    uploadRef.value.limpar()
+    avisar('ok', 'Arquivo enviado.')
   } catch (e) {
     avisar('erro', e.message)
   } finally {

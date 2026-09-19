@@ -37,17 +37,7 @@ function limpar() {
 }
 
 function submeter() {
-  // TODO 4 — emita o evento 'salvar' levando uma CÓPIA de form.value.
-  //
-  //   emit('salvar', { ...form.value })
-  //
-  // Por que a cópia (`{ ...form.value }`)? Porque se você mandar o
-  // objeto reativo direto e depois chamar limpar(), o pai recebe um
-  // objeto que ficou vazio no meio do caminho.
-  //
-  // Depois de implementar, exponha limpar() para o pai poder resetar
-  // o formulário após um cadastro bem-sucedido — a linha
-  // defineExpose no fim do arquivo já faz isso.
+  emit('salvar', { ...form.value })
 }
 
 // Deixa limpar() acessível pelo pai via ref do componente.
