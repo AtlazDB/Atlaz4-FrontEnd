@@ -49,9 +49,8 @@ import http from './http'
  * @returns {Promise<Array>} lista de fontes
  */
 export async function listarFontes(busca = '') {
-  // Enquanto não estiver implementado, devolve lista vazia para a tela
-  // conseguir renderizar sem quebrar. Apague este return ao começar.
-  return []
+  const { data } = await http.get('/fontes')
+  return data
 }
 
 /**
@@ -69,7 +68,8 @@ export async function listarFontes(busca = '') {
  * @returns {Promise<object>} a fonte criada pelo servidor
  */
 export async function criarFonte(fonte) {
-  throw new Error('criarFonte ainda não foi implementado (TODO 2).')
+  const { data } = await http.post('/fontes', fonte)
+  return data
 }
 
 /**
@@ -105,7 +105,17 @@ export async function criarFonte(fonte) {
  * @returns {Promise<{fonte:object, arquivo:object}>}
  */
 export async function enviarArquivo(fonteId, arquivo, aoProgredir = () => {}) {
-  throw new Error('enviarArquivo ainda não foi implementado (TODO 3).')
+  const dados = new FormData()
+  dados.append('arquivo', arquivo)
+
+  const { data } = await http.post(`/fontes/${fonteId}/arquivos`, dados, {
+    timeout: 10 * 60_000,
+    onUploadProgress: (evento) => {
+      if (!evento.total) return
+      aoProgredir(Math.round((evento.loaded * 100) / evento.total))
+    },
+  })
+  return data
 }
 
 /**
