@@ -31,15 +31,7 @@ const inputRef = ref(null)
 const podeEnviar = computed(() => !!arquivo.value && !!props.fonte && !props.enviando)
 
 function aoEscolher(evento) {
-  // TODO 5 — pegue o arquivo selecionado e guarde em `arquivo`.
-  //
-  // Num <input type="file">, os arquivos ficam em evento.target.files,
-  // que é uma FileList (parece array, mas não é). Como aceitamos só um:
-  //
-  //   arquivo.value = evento.target.files[0] ?? null
-  //
-  // Para o drag-and-drop, o caminho é outro: evento.dataTransfer.files.
-  // A função aoSoltar() abaixo já trata isso e chama esta aqui.
+  arquivo.value = evento.target.files[0] ?? null
 }
 
 function aoSoltar(evento) {
@@ -52,13 +44,8 @@ function aoSoltar(evento) {
 }
 
 function enviar() {
-  // TODO 6 — emita 'enviar' com o arquivo escolhido.
-  //
-  //   if (!podeEnviar.value) return
-  //   emit('enviar', arquivo.value)
-  //
-  // Quem escuta é a ImportacaoView (TODO 9), que chama o service e vai
-  // devolvendo o progresso pela prop `progresso`.
+  if (!podeEnviar.value) return
+  emit('enviar', arquivo.value)
 }
 
 function limpar() {

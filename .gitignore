@@ -27,3 +27,6 @@ Claude outputs/
 .idea
 *.log
 npm-debug.log*
+
+# Contexto local do projeto
+CLAUDE.md
