@@ -1,4 +1,5 @@
 <script setup>
+import { useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 
 /**
@@ -15,6 +16,13 @@ const iniciais = usuario.nome
   .join('')
   .slice(0, 2)
   .toUpperCase()
+
+const route = useRoute()
+
+const areas = [
+  { rota: 'importacao', rotulo: 'Ingestão de dados' },
+  { rota: 'consulta', rotulo: 'Consulta territorial' },
+]
 </script>
 
 <template>
@@ -30,6 +38,25 @@ const iniciais = usuario.nome
         GeoRural DataHub
       </h1>
     </div>
+
+    <nav
+      class="flex items-center gap-1 rounded-xl border border-slate-800 bg-slate-950/40 p-1"
+      aria-label="Áreas da aplicação"
+    >
+      <RouterLink
+        v-for="area in areas"
+        :key="area.rota"
+        :to="{ name: area.rota }"
+        class="rounded-lg px-3 py-1.5 text-[13px] font-medium transition"
+        :class="
+          route.name === area.rota
+            ? 'bg-cyan-500/15 text-cyan-300'
+            : 'text-slate-400 hover:text-slate-200'
+        "
+      >
+        {{ area.rotulo }}
+      </RouterLink>
+    </nav>
 
     <div class="flex items-center gap-2.5 border-l border-slate-700/70 pl-3">
       <div
