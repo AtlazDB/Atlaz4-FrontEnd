@@ -1,29 +1,35 @@
 <script setup>
 import { computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
-import { formatarArea } from '@/utils/formato'
+import BaseButton from '@/components/BaseButton.vue'
+import { formatarArea, formatarNumero, formatarSituacao } from '@/utils/formato'
 
 /**
- * Tabela dos imóveis filtrados. Mesmo padrão da FonteList: quatro estados
- * (carregando, erro, vazia, preenchida) e nenhuma chamada à API.
+ * Uma página da tabela de imóveis. Mesmo padrão da FonteList: estados de
+ * carregando, erro, vazia e preenchida, e nenhuma chamada à API — a view
+ * busca a página e esta tabela só pede outra pelo evento `mudar-pagina`.
  */
 const props = defineProps({
-  imoveis: { type: Array, required: true },
+  itens: { type: Array, required: true },
+  total: { type: Number, default: 0 },
+  pagina: { type: Number, default: 1 },
+  tamanho: { type: Number, default: 50 },
   carregando: { type: Boolean, default: false },
   erro: { type: String, default: '' },
   selecionadoCod: { type: String, default: null },
 })
 
-defineEmits(['selecionar', 'tentar-novamente'])
+defineEmits(['selecionar', 'mudar-pagina', 'tentar-novamente'])
 
-const areaTotal = computed(() =>
-  props.imoveis.reduce((soma, imovel) => soma + (Number(imovel.areaHa) || 0), 0),
-)
+const totalPaginas = computed(() => Math.max(1, Math.ceil(props.total / props.tamanho)))
+const primeiro = computed(() => (props.pagina - 1) * props.tamanho + 1)
+const ultimo = computed(() => Math.min(props.pagina * props.tamanho, props.total))
 </script>
 
 <template>
-  <!-- Estado 1: carregando -->
-  <div v-if="carregando" class="space-y-2">
+  <!-- Estado 1: carregando pela primeira vez (depois, a página antiga fica
+       na tela, apagada, até a nova chegar) -->
+  <div v-if="carregando && !itens.length" class="space-y-2">
     <div v-for="n in 4" :key="n" class="h-10 animate-pulse rounded-lg bg-slate-800/30" />
   </div>
 
@@ -43,7 +49,7 @@ const areaTotal = computed(() =>
 
   <!-- Estado 3: nenhum imóvel -->
   <div
-    v-else-if="!imoveis.length"
+    v-else-if="!itens.length"
     class="rounded-xl border border-dashed border-slate-700 p-8 text-center"
   >
     <p class="text-sm text-slate-400">Nenhum imóvel encontrado.</p>
@@ -51,20 +57,20 @@ const areaTotal = computed(() =>
   </div>
 
   <!-- Estado 4: a tabela -->
-  <div v-else>
+  <div v-else :class="['transition-opacity', carregando && 'opacity-50']">
     <div class="max-h-[440px] overflow-auto rounded-xl border border-slate-800">
       <table class="w-full text-left text-sm">
         <thead class="sticky top-0 bg-slate-900 text-[11px] uppercase tracking-wide text-slate-500">
           <tr>
             <th class="px-3 py-2.5 font-medium">Código do imóvel</th>
             <th class="px-3 py-2.5 font-medium">Município</th>
-            <th class="px-3 py-2.5 font-medium">UF</th>
+            <th class="px-3 py-2.5 font-medium">Situação</th>
             <th class="px-3 py-2.5 text-right font-medium">Área</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-800/80">
           <tr
-            v-for="imovel in imoveis"
+            v-for="imovel in itens"
             :key="imovel.codImovel"
             tabindex="0"
             :aria-selected="selecionadoCod === imovel.codImovel"
@@ -74,22 +80,46 @@ const areaTotal = computed(() =>
                 ? 'bg-cyan-500/10 text-cyan-100'
                 : 'text-slate-300 hover:bg-slate-900/60'
             "
-            @click="$emit('selecionar', imovel.codImovel)"
-            @keydown.enter.prevent="$emit('selecionar', imovel.codImovel)"
-            @keydown.space.prevent="$emit('selecionar', imovel.codImovel)"
+            @click="$emit('selecionar', imovel)"
+            @keydown.enter.prevent="$emit('selecionar', imovel)"
+            @keydown.space.prevent="$emit('selecionar', imovel)"
           >
             <td class="px-3 py-2.5 font-mono text-[12px] text-cyan-400">{{ imovel.codImovel }}</td>
             <td class="px-3 py-2.5">{{ imovel.municipio ?? '—' }}</td>
-            <td class="px-3 py-2.5">{{ imovel.estado ?? '—' }}</td>
+            <td class="px-3 py-2.5">{{ formatarSituacao(imovel.situacao) }}</td>
             <td class="whitespace-nowrap px-3 py-2.5 text-right">{{ formatarArea(imovel.areaHa) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p class="mt-2.5 text-right text-xs text-slate-500">
-      {{ imoveis.length }} {{ imoveis.length === 1 ? 'imóvel' : 'imóveis' }} ·
-      {{ formatarArea(areaTotal) }} no total
-    </p>
+    <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+      <span>
+        {{ formatarNumero(primeiro) }}–{{ formatarNumero(ultimo) }} de
+        {{ formatarNumero(total) }} {{ total === 1 ? 'imóvel' : 'imóveis' }}
+      </span>
+
+      <div class="flex items-center gap-2">
+        <BaseButton
+          variante="fantasma"
+          tamanho="sm"
+          :disabled="carregando || pagina <= 1"
+          @click="$emit('mudar-pagina', pagina - 1)"
+        >
+          Anterior
+        </BaseButton>
+        <span class="whitespace-nowrap">
+          Página {{ formatarNumero(pagina) }} de {{ formatarNumero(totalPaginas) }}
+        </span>
+        <BaseButton
+          variante="fantasma"
+          tamanho="sm"
+          :disabled="carregando || pagina >= totalPaginas"
+          @click="$emit('mudar-pagina', pagina + 1)"
+        >
+          Próxima
+        </BaseButton>
+      </div>
+    </div>
   </div>
 </template>
