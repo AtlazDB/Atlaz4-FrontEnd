@@ -2,6 +2,9 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
 import { formatarArea, formatarSituacao } from '@/utils/formato'
+// Contorno do estado, da API de malhas do IBGE (qualidade intermediária, 9 KB):
+// servicodados.ibge.gov.br/api/v3/malhas/estados/41?formato=application/vnd.geo+json
+import parana from '@/assets/parana.json'
 
 /**
  * Mapa dos imóveis rurais, carregado por área visível.
@@ -24,6 +27,8 @@ const props = defineProps({
   municipio: { type: Object, default: null },
   /** imóvel selecionado, com a geometria completa */
   destaque: { type: Object, default: null },
+  /** true quando a camada já vem filtrada por município */
+  filtrado: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['area', 'selecionar'])
@@ -37,6 +42,9 @@ const estilo = {
   imovel: { color: '#22d3ee', weight: 1, fillColor: '#22d3ee', fillOpacity: 0.15 },
   destaque: { color: '#f8fafc', weight: 2.5, fillColor: '#22d3ee', fillOpacity: 0.4 },
   municipio: { color: '#cbd5e1', weight: 2, dashArray: '6 4', fill: false },
+  estado: { color: '#64748b', weight: 1.5, fill: false },
+  // mesma cor do fundo da aplicação (#0b0f19): fora do PR o mapa "some"
+  mascara: { stroke: false, fillColor: '#0b0f19', fillOpacity: 0.85 },
 }
 
 const container = ref(null)
@@ -55,7 +63,8 @@ const mensagem = computed(() => {
     return { tipo: 'alerta', texto: 'Mostrando parte dos imóveis — aproxime o zoom' }
   }
   if (props.camada && !props.camada.features?.length) {
-    return { tipo: 'info', texto: 'Nenhum imóvel nesta área' }
+    const texto = props.filtrado ? 'Nenhum imóvel deste município nesta área' : 'Nenhum imóvel nesta área'
+    return { tipo: 'info', texto }
   }
   return null
 })
@@ -67,14 +76,26 @@ const coresMensagem = {
 }
 
 onMounted(() => {
+  const limitesParana = L.geoJSON(parana).getBounds()
+
   // preferCanvas: mil polígonos num único <canvas> em vez de mil elementos SVG.
-  mapa = L.map(container.value, { preferCanvas: true }).setView(CENTRO_PARANA, ZOOM_PARANA)
+  // maxBounds + viscosidade 1: o mapa não deixa arrastar para fora do PR.
+  mapa = L.map(container.value, {
+    preferCanvas: true,
+    maxBounds: limitesParana.pad(0.05),
+    maxBoundsViscosity: 1,
+  }).setView(CENTRO_PARANA, ZOOM_PARANA)
+
+  // Zoom mínimo = o que mostra o estado inteiro. Calculado pelo tamanho real
+  // do mapa na tela: numa tela estreita ele é menor que num monitor largo.
+  mapa.setMinZoom(mapa.getBoundsZoom(limitesParana))
 
   // Fundo escuro da Esri: não exige chave de API (o da CARTO, usado no
   // protótipo, passou a exigir). A camada de referência põe os nomes das
   // cidades por cima do fundo.
   const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
-  const atribuicao = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap'
+  const atribuicao =
+    'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap · Contorno do PR: IBGE'
   L.tileLayer(`${esri}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
     attribution: atribuicao,
     maxZoom: ZOOM_MAXIMO,
@@ -82,6 +103,8 @@ onMounted(() => {
   L.tileLayer(`${esri}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {
     maxZoom: ZOOM_MAXIMO,
   }).addTo(mapa)
+
+  desenharMascara()
 
   // Uma camada só para os imóveis, reaproveitada a cada movimento: troca-se
   // o conteúdo (clearLayers + addData), não a camada.
@@ -112,6 +135,29 @@ watch(
     else mapa.setView(CENTRO_PARANA, ZOOM_PARANA)
   },
 )
+
+/**
+ * Escurece tudo o que fica fora do Paraná. É um polígono do tamanho do
+ * mundo com o estado recortado como buraco: no Leaflet, o primeiro anel de
+ * um L.polygon é o contorno e os seguintes são buracos. O PR tem mais de um
+ * polígono (o continente e as ilhas), e cada um vira um buraco.
+ *
+ * O GeoJSON guarda [lon, lat]; o Leaflet quer [lat, lon] — daí o map().
+ */
+function desenharMascara() {
+  const mundo = [
+    [-90, -180],
+    [-90, 180],
+    [90, 180],
+    [90, -180],
+  ]
+  const buracos = parana.features
+    .flatMap((f) => f.geometry.coordinates) // MultiPolygon → lista de polígonos
+    .map(([anelExterno]) => anelExterno.map(([lon, lat]) => [lat, lon]))
+
+  L.polygon([mundo, ...buracos], { ...estilo.mascara, interactive: false }).addTo(mapa)
+  L.geoJSON(parana, { style: estilo.estado, interactive: false }).addTo(mapa)
+}
 
 /** Diz à view qual caixa buscar — ou `null`, se o zoom estiver longe demais. */
 function avisarArea() {

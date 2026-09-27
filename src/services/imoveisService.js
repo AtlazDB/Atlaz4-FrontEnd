@@ -37,12 +37,19 @@ export async function listarPaginaImoveis({ pagina = 1, tamanho = 50, municipio,
  * o mapa, quem chamou cancela o pedido anterior. Um pedido cancelado chega
  * no catch com `e.original.code === 'ERR_CANCELED'`.
  *
+ * `municipio` (nome, sem acento) ainda NÃO é aceito pelo back-end — ele
+ * ignora o parâmetro e devolve todos da área. Já vai no pedido para que,
+ * quando o back passar a filtrar, o front funcione sem mudança.
+ *
  * @param {{minLon:number, minLat:number, maxLon:number, maxLat:number}} caixa
  * @returns {Promise<object>} FeatureCollection com `truncado: true` se havia
  *   mais imóveis na área do que o limite
  */
-export async function buscarImoveisNoMapa(caixa, { limite = 1000, signal } = {}) {
-  const { data } = await http.get('/imoveis/mapa', { params: { ...caixa, limite }, signal })
+export async function buscarImoveisNoMapa(caixa, { limite = 1000, municipio, signal } = {}) {
+  const params = { ...caixa, limite }
+  if (municipio) params.municipio = municipio
+
+  const { data } = await http.get('/imoveis/mapa', { params, signal })
   return data
 }
 
