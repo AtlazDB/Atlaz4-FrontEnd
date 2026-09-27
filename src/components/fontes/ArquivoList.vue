@@ -8,8 +8,8 @@ import { ehProcessavel } from '@/utils/processamento'
  * Arquivos recebidos de uma fonte, com o status do processamento.
  *
  * Componente de apresentação, como o FonteList: não chama o service.
- * O botão "Processar" só emite 'processar' — quem faz a chamada é a
- * ImportacaoView.
+ * Os botões "Processar" e "Excluir" só emitem 'processar' / 'excluir' —
+ * quem faz a chamada é a ImportacaoView.
  *
  * O `status` do arquivo (RECEBIDO → PROCESSANDO → PROCESSADO | REJEITADO)
  * não é o `status` da fonte (ativa | pendente | inativa). No mock o
@@ -21,9 +21,11 @@ const props = defineProps({
   emProcessamento: { type: Array, default: () => [] },
   /** resultado do último processamento, por id: { tipo: 'ok' | 'erro', texto } */
   resultados: { type: Object, default: () => ({}) },
+  /** ids com exclusão em andamento (o botão fica em "carregando") */
+  excluindo: { type: Array, default: () => [] },
 })
 
-defineEmits(['processar'])
+defineEmits(['processar', 'excluir'])
 
 const etiquetas = {
   RECEBIDO: { rotulo: 'Recebido', classe: 'text-slate-300 bg-slate-500/10 border-slate-500/40' },
@@ -49,6 +51,12 @@ function podeProcessar(arquivo) {
     ehProcessavel(props.fonte, arquivo) &&
     ['RECEBIDO', 'REJEITADO'].includes(statusDe(arquivo))
   )
+}
+
+// O back-end também recusa (409) rejeitado que já gerou versão de dados —
+// raro (processado, depois falhou num reprocessamento); a mensagem vem pronta.
+function podeExcluir(arquivo) {
+  return statusDe(arquivo) === 'REJEITADO'
 }
 </script>
 
@@ -92,6 +100,18 @@ function podeProcessar(arquivo) {
         >
           <AppIcon nome="executar" traco="2.2" class="h-3 w-3" />
           Processar
+        </BaseButton>
+
+        <BaseButton
+          v-if="podeExcluir(arquivo)"
+          variante="fantasma"
+          tamanho="sm"
+          class="shrink-0 text-rose-300 hover:text-rose-200"
+          :carregando="excluindo.includes(arquivo.id)"
+          @click="$emit('excluir', arquivo)"
+        >
+          <AppIcon v-if="!excluindo.includes(arquivo.id)" nome="lixeira" traco="2" class="h-3 w-3" />
+          Excluir
         </BaseButton>
       </div>
 
