@@ -55,11 +55,15 @@ let consultaAtual = 0
 let contornoAtual = 0
 let selecaoAtual = 0
 let pedidoMapa = null // AbortController do pedido do mapa em andamento
+let ultimaCaixa = null // última área visível avisada pelo mapa
 let esperaBusca = null // setTimeout da busca por código
 
 const nomeMunicipio = computed(
   () => municipios.value.find((m) => m.codIbge === codIbge.value)?.nome ?? '',
 )
+
+// O nome como o CAR grava: sem acento ("Maringa"). Vale para a tabela e o mapa.
+const nomeFiltro = computed(() => nomeMunicipio.value && semAcento(nomeMunicipio.value))
 
 async function carregarMunicipios() {
   carregandoMunicipios.value = true
@@ -89,7 +93,7 @@ async function carregarPagina() {
     const resposta = await listarPaginaImoveis({
       pagina: pagina.value,
       tamanho: TAMANHO,
-      municipio: nomeMunicipio.value && semAcento(nomeMunicipio.value),
+      municipio: nomeFiltro.value,
       codImovel: codImovel.value.trim(),
     })
     if (consulta !== consultaAtual) return
@@ -139,6 +143,7 @@ async function carregarContorno(cod) {
  * anterior é cancelado — só a última área interessa.
  */
 async function aoMoverMapa(caixa) {
+  ultimaCaixa = caixa
   pedidoMapa?.abort()
   pedidoMapa = null
   erroMapa.value = ''
@@ -153,7 +158,11 @@ async function aoMoverMapa(caixa) {
   pedidoMapa = controle
   carregandoMapa.value = true
   try {
-    camada.value = await buscarImoveisNoMapa(caixa, { signal: controle.signal })
+    const colecao = await buscarImoveisNoMapa(caixa, {
+      municipio: nomeFiltro.value,
+      signal: controle.signal,
+    })
+    camada.value = doMunicipio(colecao)
   } catch (e) {
     // Cancelado de propósito: não é erro. O interceptor do http.js embrulha
     // o erro do Axios, mas deixa o original em `e.original`.
@@ -164,6 +173,27 @@ async function aoMoverMapa(caixa) {
       pedidoMapa = null
       carregandoMapa.value = false
     }
+  }
+}
+
+/**
+ * PALIATIVO até o back-end filtrar o /imoveis/mapa por município: tira da
+ * coleção os imóveis de outros municípios.
+ *
+ * Compara por IGUALDADE (sem acento e sem maiúsculas), então Ivaí não traz
+ * Ivaiporã. O limite: o back corta em 1000 imóveis ANTES deste filtro, e
+ * numa área densa os 1000 podem ser quase todos do vizinho — aí faltam
+ * imóveis do município (o aviso de `truncado` continua aparecendo).
+ * Quando o back filtrar, esta função vira um no-op e pode ser apagada.
+ */
+function doMunicipio(colecao) {
+  if (!nomeFiltro.value) return colecao
+  const alvo = nomeFiltro.value.toLowerCase()
+  return {
+    ...colecao,
+    features: colecao.features.filter(
+      (f) => semAcento(f.properties.municipio ?? '').toLowerCase() === alvo,
+    ),
   }
 }
 
@@ -209,7 +239,13 @@ watch([codIbge, codImovel], ([ibge], [ibgeAntes]) => {
   else esperaBusca = setTimeout(recomecar, 400)
 })
 
-watch(codIbge, carregarContorno)
+// Trocar o município também refaz o mapa. O fitBounds no contorno quase
+// sempre dispara um moveend (e um pedido novo) logo em seguida; o
+// AbortController descarta o que ficar duplicado.
+watch(codIbge, (cod) => {
+  carregarContorno(cod)
+  aoMoverMapa(ultimaCaixa)
+})
 
 onMounted(() => {
   carregarMunicipios()
@@ -249,6 +285,7 @@ onBeforeUnmount(() => {
           :erro="erroMapa"
           :municipio="municipio"
           :destaque="destaque"
+          :filtrado="!!nomeFiltro"
           @area="aoMoverMapa"
           @selecionar="selecionarDoMapa"
         />
