@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-base;
+  }
+
+  body {
+    @apply text-slate-200 font-sans antialiased overflow-x-hidden;
+  }
+
+  /* Campos escuros: faz o navegador desenhar setas de select e o
+     seletor de arquivo no tom certo, em vez do branco padrão. */
+  input,
+  select,
+  textarea {
+    color-scheme: dark;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-800;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-700;
+  }
+}
+
+@layer components {
+  /* Cartão de vidro: a assinatura visual do GeoRural DataHub. */
+  .glass {
+    @apply rounded-2xl border border-slate-800/80 bg-slate-900/45 backdrop-blur-lg;
+  }
+
+  /* Manchas de luz do fundo. Ficam atrás de tudo e não recebem clique. */
+  .glow {
+    @apply pointer-events-none fixed z-0 rounded-full;
+    filter: blur(110px);
+  }
+
+  .label {
+    @apply mb-1.5 block text-[11px] font-medium text-slate-400;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm
+           text-slate-200 placeholder:text-slate-600
+           transition focus:border-cyan-500/60 focus:outline-none focus:ring-2 focus:ring-cyan-500/30
+           disabled:opacity-50;
+  }
+}
+
+/* Leaflet no tema escuro. Fica depois do leaflet.css (ver main.js) para
+   sobrescrever o visual claro padrão dos controles e das dicas. */
+.leaflet-container {
+  @apply bg-slate-950 font-sans;
+}
+
+.leaflet-tooltip {
+  @apply rounded-md border border-slate-700 bg-slate-900/95 px-2 py-1 text-xs text-slate-200 shadow-lg;
+}
+
+.leaflet-tooltip::before {
+  display: none;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  @apply border-slate-700 bg-slate-900 text-slate-200;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  @apply bg-slate-900/70 text-slate-500;
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  @apply text-slate-400;
+}
