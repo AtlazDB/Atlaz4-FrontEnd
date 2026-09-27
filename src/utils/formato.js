@@ -13,6 +13,12 @@ export function formatarTamanho(bytes) {
   return `${valor.toFixed(i === 0 ? 0 : 1).replace('.', ',')} ${unidades[i]}`
 }
 
+/** 1234567 -> "1.234.567" */
+export function formatarNumero(valor) {
+  if (valor == null) return '—'
+  return Number(valor).toLocaleString('pt-BR')
+}
+
 /** 1651.4 -> "1.651,4 ha" */
 export function formatarArea(hectares) {
   if (hectares == null) return '—'
