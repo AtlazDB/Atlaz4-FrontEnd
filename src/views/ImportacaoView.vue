@@ -297,9 +297,12 @@ onBeforeUnmount(() => {
       <div class="lg:col-span-4">
         <BaseCard titulo="Fontes cadastradas" icone="camadas">
           <template #acoes>
+            <!-- Cadastro de fonte desabilitado por enquanto: o botão fica visível,
+                 mas não abre o formulário. Para reativar, remova o `disabled`. -->
             <BaseButton
               variante="secundario"
               tamanho="sm"
+              disabled
               @click="mostrandoForm = !mostrandoForm"
             >
               <AppIcon v-if="!mostrandoForm" nome="mais" traco="2.4" class="h-3 w-3" />
