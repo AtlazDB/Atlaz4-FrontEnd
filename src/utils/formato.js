@@ -13,6 +13,12 @@ export function formatarTamanho(bytes) {
   return `${valor.toFixed(i === 0 ? 0 : 1).replace('.', ',')} ${unidades[i]}`
 }
 
+/** 1651.4 -> "1.651,4 ha" */
+export function formatarArea(hectares) {
+  if (hectares == null) return '—'
+  return `${Number(hectares).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`
+}
+
 /** "2026-02-10T13:20:00.000Z" -> "10/02/2026 10:20" */
 export function formatarDataHora(iso) {
   if (!iso) return '—'

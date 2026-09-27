@@ -58,3 +58,30 @@
            disabled:opacity-50;
   }
 }
+
+/* Leaflet no tema escuro. Fica depois do leaflet.css (ver main.js) para
+   sobrescrever o visual claro padrão dos controles e das dicas. */
+.leaflet-container {
+  @apply bg-slate-950 font-sans;
+}
+
+.leaflet-tooltip {
+  @apply rounded-md border border-slate-700 bg-slate-900/95 px-2 py-1 text-xs text-slate-200 shadow-lg;
+}
+
+.leaflet-tooltip::before {
+  display: none;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  @apply border-slate-700 bg-slate-900 text-slate-200;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  @apply bg-slate-900/70 text-slate-500;
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  @apply text-slate-400;
+}

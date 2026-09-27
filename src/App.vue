@@ -1,7 +1,10 @@
 <script setup>
+import { useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import EtapasNav from '@/components/layout/EtapasNav.vue'
+
+const route = useRoute()
 </script>
 
 <template>
@@ -12,7 +15,7 @@ import EtapasNav from '@/components/layout/EtapasNav.vue'
 
   <div class="relative z-10 mx-auto flex min-h-screen max-w-[1400px] flex-col px-4 py-6 md:px-6">
     <AppHeader class="mb-5" />
-    <EtapasNav class="mb-5" />
+    <EtapasNav v-if="route.meta.etapas" class="mb-5" />
 
     <main class="flex-1">
       <!-- A tela da etapa atual entra aqui (ver src/router/index.js) -->
