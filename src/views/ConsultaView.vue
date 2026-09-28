@@ -10,7 +10,6 @@ import {
   buscarImovel,
 } from '@/services/imoveisService'
 import { listarMunicipios, buscarMunicipio } from '@/services/municipiosService'
-import { semAcento } from '@/utils/formato'
 
 /**
  * Consulta territorial do Analista: imóveis rurais no mapa e numa tabela.
@@ -30,6 +29,7 @@ const erroMunicipios = ref('')
 const erroContorno = ref('')
 const codIbge = ref('')
 const codImovel = ref('')
+const situacao = ref('') // AT | PE | CA | SU, '' = todas
 const municipio = ref(null) // com geometria, para o contorno no mapa
 
 // --- Tabela -------------------------------------------------------
@@ -62,8 +62,10 @@ const nomeMunicipio = computed(
   () => municipios.value.find((m) => m.codIbge === codIbge.value)?.nome ?? '',
 )
 
-// O nome como o CAR grava: sem acento ("Maringa"). Vale para a tabela e o mapa.
-const nomeFiltro = computed(() => nomeMunicipio.value && semAcento(nomeMunicipio.value))
+// Vai o nome do IBGE como está ("Maringá"): o back-end compara por igualdade,
+// sem diferenciar acento nem maiúsculas, com o "Maringa" que o CAR grava.
+// Vale para a tabela e para o mapa.
+const nomeFiltro = computed(() => nomeMunicipio.value)
 
 async function carregarMunicipios() {
   carregandoMunicipios.value = true
@@ -80,10 +82,9 @@ async function carregarMunicipios() {
 /**
  * Busca a página atual da tabela.
  *
- * O município vai pelo NOME, sem acento: os imóveis carregados do CAR não
- * têm o vínculo com o código IBGE, e o CAR grava "Maringa" onde o IBGE diz
- * "Maringá". O filtro do back-end é "contém" — escolher Ivaí também traz
- * Ivaiporã. Está anotado no CLAUDE.md para ajustar no back.
+ * O município vai pelo NOME: os imóveis carregados do CAR não têm o vínculo
+ * com o código IBGE. O back-end compara por igualdade (Ivaí não traz
+ * Ivaiporã) e ignora acento e maiúsculas.
  */
 async function carregarPagina() {
   const consulta = ++consultaAtual
@@ -95,6 +96,7 @@ async function carregarPagina() {
       tamanho: TAMANHO,
       municipio: nomeFiltro.value,
       codImovel: codImovel.value.trim(),
+      situacao: situacao.value,
     })
     if (consulta !== consultaAtual) return
     itens.value = resposta.itens
@@ -158,11 +160,11 @@ async function aoMoverMapa(caixa) {
   pedidoMapa = controle
   carregandoMapa.value = true
   try {
-    const colecao = await buscarImoveisNoMapa(caixa, {
+    camada.value = await buscarImoveisNoMapa(caixa, {
       municipio: nomeFiltro.value,
+      situacao: situacao.value,
       signal: controle.signal,
     })
-    camada.value = doMunicipio(colecao)
   } catch (e) {
     // Cancelado de propósito: não é erro. O interceptor do http.js embrulha
     // o erro do Axios, mas deixa o original em `e.original`.
@@ -173,27 +175,6 @@ async function aoMoverMapa(caixa) {
       pedidoMapa = null
       carregandoMapa.value = false
     }
-  }
-}
-
-/**
- * PALIATIVO até o back-end filtrar o /imoveis/mapa por município: tira da
- * coleção os imóveis de outros municípios.
- *
- * Compara por IGUALDADE (sem acento e sem maiúsculas), então Ivaí não traz
- * Ivaiporã. O limite: o back corta em 1000 imóveis ANTES deste filtro, e
- * numa área densa os 1000 podem ser quase todos do vizinho — aí faltam
- * imóveis do município (o aviso de `truncado` continua aparecendo).
- * Quando o back filtrar, esta função vira um no-op e pode ser apagada.
- */
-function doMunicipio(colecao) {
-  if (!nomeFiltro.value) return colecao
-  const alvo = nomeFiltro.value.toLowerCase()
-  return {
-    ...colecao,
-    features: colecao.features.filter(
-      (f) => semAcento(f.properties.municipio ?? '').toLowerCase() === alvo,
-    ),
   }
 }
 
@@ -231,13 +212,16 @@ function selecionarDoMapa(codigo) {
   alternarSelecao(codigo)
 }
 
-// Trocar o município busca na hora; digitar o código espera 400 ms parado,
-// para não disparar um pedido a cada tecla.
-watch([codIbge, codImovel], ([ibge], [ibgeAntes]) => {
+// Trocar o município ou a situação busca na hora; digitar o código espera
+// 400 ms parado, para não disparar um pedido a cada tecla.
+watch([codIbge, situacao, codImovel], ([ibge, sit], [ibgeAntes, sitAntes]) => {
   clearTimeout(esperaBusca)
-  if (ibge !== ibgeAntes) recomecar()
+  if (ibge !== ibgeAntes || sit !== sitAntes) recomecar()
   else esperaBusca = setTimeout(recomecar, 400)
 })
+
+// A situação também vale no mapa: refaz a área que está na tela.
+watch(situacao, () => aoMoverMapa(ultimaCaixa))
 
 // Trocar o município também refaz o mapa. O fitBounds no contorno quase
 // sempre dispara um moveend (e um pedido novo) logo em seguida; o
@@ -264,12 +248,13 @@ onBeforeUnmount(() => {
       destaque
       titulo="Imóveis rurais · Paraná"
       icone="mapa"
-      descricao="Filtre por município ou pelo código do imóvel. Aproxime o zoom no mapa para ver os
+      descricao="Filtre por município, situação no CAR ou código do imóvel. Aproxime o zoom no mapa para ver os
                  perímetros, e clique numa linha da tabela para localizar o imóvel."
     >
       <FiltroTerritorio
         v-model:cod-ibge="codIbge"
         v-model:cod-imovel="codImovel"
+        v-model:situacao="situacao"
         :municipios="municipios"
         :carregando="carregandoMunicipios"
         :erro="erroMunicipios || erroContorno"
@@ -285,7 +270,7 @@ onBeforeUnmount(() => {
           :erro="erroMapa"
           :municipio="municipio"
           :destaque="destaque"
-          :filtrado="!!nomeFiltro"
+          :filtrado="!!nomeFiltro || !!situacao"
           @area="aoMoverMapa"
           @selecionar="selecionarDoMapa"
         />

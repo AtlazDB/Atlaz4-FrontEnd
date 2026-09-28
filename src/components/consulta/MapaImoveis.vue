@@ -63,7 +63,7 @@ const mensagem = computed(() => {
     return { tipo: 'alerta', texto: 'Mostrando parte dos imóveis — aproxime o zoom' }
   }
   if (props.camada && !props.camada.features?.length) {
-    const texto = props.filtrado ? 'Nenhum imóvel deste município nesta área' : 'Nenhum imóvel nesta área'
+    const texto = props.filtrado ? 'Nenhum imóvel com este filtro nesta área' : 'Nenhum imóvel nesta área'
     return { tipo: 'info', texto }
   }
   return null

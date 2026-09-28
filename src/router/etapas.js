@@ -12,12 +12,12 @@ export const etapas = [
     rota: 'importacao',
     rotulo: 'Cadastro & Importação',
   },
-  {
-    rota: null,
-    rotulo: 'Validação',
-  },
-  {
-    rota: null,
-    rotulo: 'Padronização',
-  },
+  // {
+  //   rota: null,
+  //   rotulo: 'Validação',
+  // },
+  // {
+  //   rota: null,
+  //   rotulo: 'Padronização',
+  // },
 ]

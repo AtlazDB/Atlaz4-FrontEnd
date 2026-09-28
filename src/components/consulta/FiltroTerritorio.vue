@@ -1,25 +1,29 @@
 <script setup>
 import BaseButton from '@/components/BaseButton.vue'
+import { SITUACOES } from '@/utils/formato'
 
 /**
- * Filtros da consulta, com dois v-model:
+ * Filtros da consulta, com três v-model:
  *   v-model:cod-ibge   → código IBGE do município ('' = todos)
  *   v-model:cod-imovel → trecho do código do imóvel no CAR ('' = todos)
+ *   v-model:situacao   → situação no CAR: AT | PE | CA | SU ('' = todas)
  */
 defineProps({
   municipios: { type: Array, required: true },
   codIbge: { type: String, default: '' },
   codImovel: { type: String, default: '' },
+  situacao: { type: String, default: '' },
   carregando: { type: Boolean, default: false },
   /** mensagem pronta, montada pela view */
   erro: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:codIbge', 'update:codImovel'])
+const emit = defineEmits(['update:codIbge', 'update:codImovel', 'update:situacao'])
 
 function limpar() {
   emit('update:codIbge', '')
   emit('update:codImovel', '')
+  emit('update:situacao', '')
 }
 </script>
 
@@ -41,6 +45,19 @@ function limpar() {
       </select>
     </div>
 
+    <div class="w-full sm:w-44">
+      <label class="label" for="filtro-situacao">Situação no CAR</label>
+      <select
+        id="filtro-situacao"
+        class="input"
+        :value="situacao"
+        @change="emit('update:situacao', $event.target.value)"
+      >
+        <option value="">Todas</option>
+        <option v-for="(rotulo, sigla) in SITUACOES" :key="sigla" :value="sigla">{{ rotulo }}</option>
+      </select>
+    </div>
+
     <div class="w-full sm:w-80">
       <label class="label" for="filtro-codigo">Código do imóvel</label>
       <input
@@ -55,7 +72,7 @@ function limpar() {
     </div>
 
     <BaseButton
-      v-if="codIbge || codImovel"
+      v-if="codIbge || codImovel || situacao"
       variante="fantasma"
       tamanho="sm"
       class="mb-0.5"

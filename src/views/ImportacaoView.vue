@@ -8,7 +8,7 @@ import FonteForm from '@/components/fontes/FonteForm.vue'
 import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
 import { listarFontes, criarFonte, enviarArquivo } from '@/services/fontesService'
-import { processarArquivo } from '@/services/arquivosService'
+import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
 import { ehProcessavel } from '@/utils/processamento'
 import { formatarNumero } from '@/utils/formato'
 
@@ -42,6 +42,7 @@ const uploadRef = ref(null)
 // --- Estado do processamento --------------------------------------
 const emProcessamento = ref([]) // ids mandados processar que ainda não responderam
 const resultados = ref({}) // id do arquivo → { tipo, texto } do último processamento
+const excluindo = ref([]) // ids com exclusão em andamento
 let consulta = null // o setInterval da consulta periódica
 let atualizando = false
 
@@ -257,6 +258,30 @@ function pararConsulta() {
 
 watch(haProcessando, (sim) => (sim ? iniciarConsulta() : pararConsulta()))
 
+/**
+ * Exclui um arquivo REJEITADO — do catálogo e da zona bruta, sem volta.
+ * Se o back-end recusar (409: não está rejeitado, ou já gerou versão de
+ * dados), a mensagem chega pronta pelo interceptor do http.js.
+ */
+async function excluir(arquivo) {
+  const confirmado = window.confirm(
+    `Excluir "${arquivo.nome}"?\n\nO arquivo é apagado do catálogo e da zona bruta. Não dá para desfazer.`,
+  )
+  if (!confirmado || excluindo.value.includes(arquivo.id)) return
+
+  excluindo.value.push(arquivo.id)
+  try {
+    await excluirArquivo(arquivo.id)
+    delete resultados.value[arquivo.id]
+    avisar('ok', `${arquivo.nome} excluído.`)
+    await atualizar()
+  } catch (e) {
+    avisar('erro', e.message)
+  } finally {
+    excluindo.value = excluindo.value.filter((x) => x !== arquivo.id)
+  }
+}
+
 function selecionar(fonte) {
   selecionada.value = fonte
   uploadRef.value?.limpar()
@@ -297,9 +322,12 @@ onBeforeUnmount(() => {
       <div class="lg:col-span-4">
         <BaseCard titulo="Fontes cadastradas" icone="camadas">
           <template #acoes>
+            <!-- Cadastro de fonte desabilitado por enquanto: o botão fica visível,
+                 mas não abre o formulário. Para reativar, remova o `disabled`. -->
             <BaseButton
               variante="secundario"
               tamanho="sm"
+              disabled
               @click="mostrandoForm = !mostrandoForm"
             >
               <AppIcon v-if="!mostrandoForm" nome="mais" traco="2.4" class="h-3 w-3" />
@@ -349,7 +377,9 @@ onBeforeUnmount(() => {
             :fonte="selecionada"
             :em-processamento="emProcessamento"
             :resultados="resultados"
+            :excluindo="excluindo"
             @processar="processar"
+            @excluir="excluir"
           />
         </BaseCard>
       </div>

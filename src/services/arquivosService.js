@@ -11,6 +11,11 @@ import http from './http'
  *        404 → { mensagem }
  *        409 → { mensagem }   (o arquivo já está sendo processado)
  *
+ *   DELETE /arquivos/:id
+ *        204 → (sem corpo)
+ *        404 → { mensagem }
+ *        409 → { mensagem }   (não está REJEITADO, ou já gerou versão de dados)
+ *
  * Repare que REJEITADO volta com 200: o pedido deu certo, quem falhou foi
  * o arquivo. Por isso quem chama precisa olhar o `status` da resposta, e
  * não só o catch.
@@ -31,4 +36,15 @@ export async function processarArquivo(arquivoId) {
     timeout: 30 * 60_000,
   })
   return data
+}
+
+/**
+ * Exclui um arquivo REJEITADO: some do catálogo e da zona bruta, sem volta.
+ * O back-end só aceita arquivo rejeitado que nunca gerou versão de dados;
+ * nos outros casos responde 409 com a mensagem pronta.
+ *
+ * @param {number} arquivoId
+ */
+export async function excluirArquivo(arquivoId) {
+  await http.delete(`/arquivos/${arquivoId}`)
 }

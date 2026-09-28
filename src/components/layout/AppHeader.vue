@@ -3,19 +3,20 @@ import { useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 
 /**
- * Barra superior fixa da aplicação: marca à esquerda, usuário à direita.
+ * Barra superior fixa da aplicação: marca à esquerda, navegação à direita.
  *
- * O usuário está fixo no código de propósito: ainda não existe login nem
- * back-end de autenticação. Quando existir, esta é a única parte que muda.
+ * O bloco do usuário está comentado: ainda não existe login nem separação
+ * por perfil. Quando existir, descomente o `usuario`, as `iniciais` e o
+ * bloco no final do template.
  */
-const usuario = { nome: 'Usuário', perfil: 'Operador de Dados' }
-
-const iniciais = usuario.nome
-  .split(' ')
-  .map((parte) => parte[0])
-  .join('')
-  .slice(0, 2)
-  .toUpperCase()
+// const usuario = { nome: 'Usuário', perfil: 'Operador de Dados' }
+//
+// const iniciais = usuario.nome
+//   .split(' ')
+//   .map((parte) => parte[0])
+//   .join('')
+//   .slice(0, 2)
+//   .toUpperCase()
 
 const route = useRoute()
 
@@ -58,6 +59,7 @@ const areas = [
       </RouterLink>
     </nav>
 
+    <!-- Usuário: comentado até existir login e separação por perfil.
     <div class="flex items-center gap-2.5 border-l border-slate-700/70 pl-3">
       <div
         class="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500
@@ -70,5 +72,6 @@ const areas = [
         <p class="text-[11px] text-slate-400">Perfil: {{ usuario.perfil }}</p>
       </div>
     </div>
+    -->
   </header>
 </template>
