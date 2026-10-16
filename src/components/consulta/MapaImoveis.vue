@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
-import { formatarArea, formatarSituacao } from '@/utils/formato'
+import { formatarArea, formatarDataHora, formatarSituacao } from '@/utils/formato'
 // Contorno do estado, da API de malhas do IBGE (qualidade intermediária, 9 KB):
 // servicodados.ibge.gov.br/api/v3/malhas/estados/41?formato=application/vnd.geo+json
 import parana from '@/assets/parana.json'
@@ -29,6 +29,8 @@ const props = defineProps({
   destaque: { type: Object, default: null },
   /** true quando a camada já vem filtrada por município */
   filtrado: { type: Boolean, default: false },
+  /** FeatureCollection de GET /focos (os focos que o IFC conta), ou null */
+  focos: { type: Object, default: null },
 })
 
 const emit = defineEmits(['area', 'selecionar'])
@@ -45,6 +47,7 @@ const estilo = {
   estado: { color: '#64748b', weight: 1.5, fill: false },
   // mesma cor do fundo da aplicação (#0b0f19): fora do PR o mapa "some"
   mascara: { stroke: false, fillColor: '#0b0f19', fillOpacity: 0.85 },
+  foco: { radius: 4, color: '#fb923c', weight: 1, fillColor: '#f97316', fillOpacity: 0.9 },
 }
 
 const container = ref(null)
@@ -54,6 +57,14 @@ let mapa = null
 let camadaImoveis = null
 let camadaDestaque = null
 let camadaMunicipio = null
+let camadaFocos = null
+
+/** Legenda: diz exatamente quais focos estão desenhados (os que o IFC conta). */
+const legendaFocos = computed(() => {
+  const f = props.focos
+  if (!f?.satelite) return 'Foco de calor (INPE)'
+  return `Foco de calor · INPE ${f.satelite} · ${f.janelaMeses} meses`
+})
 
 const mensagem = computed(() => {
   if (!perto.value) return { tipo: 'info', texto: 'Aproxime o zoom para ver os imóveis' }
@@ -110,12 +121,17 @@ onMounted(() => {
   // o conteúdo (clearLayers + addData), não a camada.
   camadaImoveis = L.geoJSON(null, { style: estilo.imovel, onEachFeature: prepararImovel }).addTo(mapa)
   camadaDestaque = L.geoJSON(null, { style: estilo.destaque, interactive: false }).addTo(mapa)
+  camadaFocos = L.geoJSON(null, {
+    pointToLayer: (_feature, posicao) => L.circleMarker(posicao, estilo.foco),
+    onEachFeature: prepararFoco,
+  }).addTo(mapa)
 
   mapa.on('moveend', avisarArea)
 
   desenharMunicipio()
   desenharImoveis()
   desenharDestaque()
+  desenharFocos()
   avisarArea()
 })
 
@@ -126,6 +142,7 @@ onBeforeUnmount(() => {
 
 watch(() => props.camada, desenharImoveis)
 watch(() => props.destaque, desenharDestaque)
+watch(() => props.focos, desenharFocos)
 watch(
   () => props.municipio,
   () => {
@@ -212,14 +229,32 @@ function desenharImoveis() {
   camadaImoveis.clearLayers()
   if (props.camada) camadaImoveis.addData(props.camada)
   // No canvas, quem é desenhado por último fica por cima: o destaque não pode
-  // sumir embaixo dos imóveis que acabaram de chegar.
+  // sumir embaixo dos imóveis que acabaram de chegar, e os focos ficam acima
+  // de tudo — senão o preenchimento do destaque esconde os pontos dentro dele.
   camadaDestaque.bringToFront()
+  camadaFocos.bringToFront()
 }
 
 function desenharDestaque() {
   if (!mapa) return
   camadaDestaque.clearLayers()
   if (props.destaque?.geometria) camadaDestaque.addData(props.destaque.geometria)
+  camadaFocos.bringToFront()
+}
+
+function desenharFocos() {
+  if (!mapa) return
+  camadaFocos.clearLayers()
+  if (props.focos) camadaFocos.addData(props.focos)
+  camadaFocos.bringToFront()
+}
+
+function prepararFoco(feature, ponto) {
+  const foco = feature.properties
+  const dica = document.createElement('span')
+  const quando = foco.dataHora ? formatarDataHora(`${foco.dataHora}Z`) : '—'
+  dica.textContent = `Foco de calor · ${foco.satelite} · ${quando}`
+  ponto.bindTooltip(dica)
 }
 
 function desenharMunicipio() {
@@ -270,6 +305,20 @@ defineExpose({ enquadrar })
         ]"
       >
         {{ mensagem.texto }}
+      </span>
+    </div>
+
+    <div
+      class="pointer-events-none absolute bottom-6 left-3 z-10 flex flex-col gap-1 rounded-lg border border-slate-700
+             bg-slate-950/85 px-2.5 py-1.5 text-[11px] text-slate-300 backdrop-blur"
+    >
+      <span class="flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-sm border border-cyan-400 bg-cyan-400/30" />
+        Imóvel rural
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="h-2.5 w-2.5 rounded-full bg-orange-500" />
+        {{ legendaFocos }}
       </span>
     </div>
   </div>

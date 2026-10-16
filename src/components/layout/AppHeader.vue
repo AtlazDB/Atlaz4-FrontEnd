@@ -23,6 +23,7 @@ const route = useRoute()
 const areas = [
   { rota: 'importacao', rotulo: 'Ingestão de dados' },
   { rota: 'consulta', rotulo: 'Consulta territorial' },
+  { rota: 'rastreabilidade', rotulo: 'Rastreabilidade' },
 ]
 </script>
 
