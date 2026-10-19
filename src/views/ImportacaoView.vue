@@ -41,6 +41,7 @@ const uploadRef = ref(null)
 
 // --- Estado do processamento --------------------------------------
 const emProcessamento = ref([]) // ids mandados processar que ainda não responderam
+const naFilaAirflow = ref({}) // id → arquivo: processamento entregue ao Airflow, ainda sem resultado
 const resultados = ref({}) // id do arquivo → { tipo, texto } do último processamento
 const excluindo = ref([]) // ids com exclusão em andamento
 let consulta = null // o setInterval da consulta periódica
@@ -184,7 +185,14 @@ async function processar(arquivo) {
   delete resultados.value[id]
   try {
     const resposta = await processarArquivo(id)
-    if (resposta.status === 'PROCESSADO') {
+    if (resposta.status === 'RECEBIDO') {
+      // Quem processa é o Airflow: o resultado chega pela consulta periódica (ver atualizar()).
+      naFilaAirflow.value[id] = arquivo
+      resultados.value[id] = {
+        tipo: 'ok',
+        texto: 'Na fila do Airflow: o processamento começa em até 2 minutos.',
+      }
+    } else if (resposta.status === 'PROCESSADO') {
       concluir(
         arquivo,
         'ok',
@@ -225,10 +233,32 @@ async function atualizar() {
       selecionada.value =
         fontes.value.find((f) => f.id === selecionada.value.id) ?? selecionada.value
     }
+    acompanharFilaAirflow()
   } catch {
     // silencioso de propósito — é só a consulta de fundo
   } finally {
     atualizando = false
+  }
+}
+
+/**
+ * Para os arquivos entregues ao Airflow, olha o status que veio na última
+ * consulta e mostra o resultado na linha do arquivo quando ele termina.
+ */
+function acompanharFilaAirflow() {
+  for (const [id, arquivo] of Object.entries(naFilaAirflow.value)) {
+    const atual = fontes.value.flatMap((f) => f.arquivos ?? []).find((a) => String(a.id) === id)
+    if (!atual) continue
+
+    if (atual.status === 'PROCESSANDO') {
+      resultados.value[id] = { tipo: 'ok', texto: 'Processando no Airflow…' }
+    } else if (atual.status === 'PROCESSADO') {
+      delete naFilaAirflow.value[id]
+      concluir(arquivo, 'ok', 'Processado pelo Airflow.')
+    } else if (atual.status === 'REJEITADO') {
+      delete naFilaAirflow.value[id]
+      concluir(arquivo, 'erro', 'Rejeitado no processamento. O motivo fica registrado na execução.')
+    }
   }
 }
 
@@ -244,6 +274,7 @@ async function atualizar() {
 const haProcessando = computed(
   () =>
     emProcessamento.value.length > 0 ||
+    Object.keys(naFilaAirflow.value).length > 0 ||
     fontes.value.some((f) => f.arquivos?.some((a) => a.status === 'PROCESSANDO')),
 )
 
