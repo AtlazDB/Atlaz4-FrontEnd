@@ -4,12 +4,15 @@ import BaseCard from '@/components/BaseCard.vue'
 import FiltroTerritorio from '@/components/consulta/FiltroTerritorio.vue'
 import MapaImoveis from '@/components/consulta/MapaImoveis.vue'
 import TabelaImoveis from '@/components/consulta/TabelaImoveis.vue'
+import CardIndicadores from '@/components/consulta/CardIndicadores.vue'
 import {
   listarPaginaImoveis,
   buscarImoveisNoMapa,
   buscarImovel,
 } from '@/services/imoveisService'
 import { listarMunicipios, buscarMunicipio } from '@/services/municipiosService'
+import { buscarFocosNoMapa } from '@/services/focosService'
+import { buscarIndicadores, calcularIndicadores } from '@/services/indicadoresService'
 
 /**
  * Consulta territorial do Analista: imóveis rurais no mapa e numa tabela.
@@ -44,10 +47,19 @@ const mapaRef = ref(null)
 const camada = ref(null) // FeatureCollection da área visível
 const carregandoMapa = ref(false)
 const erroMapa = ref('')
+const focos = ref(null) // focos de calor da área visível (os que o IFC conta)
 
 // --- Seleção ------------------------------------------------------
 const selecionadoCod = ref(null)
 const destaque = ref(null) // o imóvel selecionado, com a geometria completa
+
+// --- Indicadores do imóvel selecionado ----------------------------
+const indicadores = ref(null)
+const carregandoIndicadores = ref(false)
+const erroIndicadores = ref('')
+const calculando = ref(false)
+let pedidoFocos = null // AbortController dos focos, separado do dos imóveis
+let indicadoresAtual = 0
 
 // Se o filtro mudar antes da resposta anterior chegar, só a última consulta
 // vale — senão uma resposta atrasada sobrescreveria a mais nova.
@@ -149,6 +161,7 @@ async function aoMoverMapa(caixa) {
   pedidoMapa?.abort()
   pedidoMapa = null
   erroMapa.value = ''
+  carregarFocos(caixa)
 
   if (!caixa) {
     camada.value = null
@@ -179,6 +192,61 @@ async function aoMoverMapa(caixa) {
 }
 
 /**
+ * Focos da mesma área do mapa. Correm em paralelo aos imóveis, com o próprio
+ * AbortController: um não espera nem cancela o outro. Falha nos focos não
+ * apaga o mapa — só some a camada laranja.
+ */
+async function carregarFocos(caixa) {
+  pedidoFocos?.abort()
+  pedidoFocos = null
+  if (!caixa) {
+    focos.value = null
+    return
+  }
+  const controle = new AbortController()
+  pedidoFocos = controle
+  try {
+    focos.value = await buscarFocosNoMapa(caixa, { signal: controle.signal })
+  } catch (e) {
+    if (e.original?.code !== 'ERR_CANCELED') focos.value = null
+  } finally {
+    if (pedidoFocos === controle) pedidoFocos = null
+  }
+}
+
+/** IRL e IFC do imóvel selecionado, para o card. */
+async function carregarIndicadores(codigo) {
+  const pedido = ++indicadoresAtual
+  indicadores.value = null
+  erroIndicadores.value = ''
+  if (!codigo) return
+
+  carregandoIndicadores.value = true
+  try {
+    const resposta = await buscarIndicadores(codigo)
+    if (pedido === indicadoresAtual) indicadores.value = resposta.indicadores
+  } catch (e) {
+    if (pedido === indicadoresAtual) erroIndicadores.value = e.message
+  } finally {
+    if (pedido === indicadoresAtual) carregandoIndicadores.value = false
+  }
+}
+
+/** Recalcula os indicadores de todos os imóveis e recarrega os do selecionado. */
+async function calcular() {
+  calculando.value = true
+  erroIndicadores.value = ''
+  try {
+    await calcularIndicadores()
+    await carregarIndicadores(selecionadoCod.value)
+  } catch (e) {
+    erroIndicadores.value = e.message
+  } finally {
+    calculando.value = false
+  }
+}
+
+/**
  * Marca (ou desmarca, se clicar de novo) um imóvel e busca a geometria
  * completa dele para o destaque. Devolve true se ficou selecionado.
  */
@@ -188,10 +256,12 @@ function alternarSelecao(codigo) {
 
   if (selecionadoCod.value === codigo) {
     selecionadoCod.value = null
+    carregarIndicadores(null)
     return false
   }
 
   selecionadoCod.value = codigo
+  carregarIndicadores(codigo)
   buscarImovel(codigo)
     .then((imovel) => {
       if (pedido === selecaoAtual) destaque.value = imovel
@@ -238,6 +308,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   pedidoMapa?.abort()
+  pedidoFocos?.abort()
   clearTimeout(esperaBusca)
 })
 </script>
@@ -271,25 +342,40 @@ onBeforeUnmount(() => {
           :municipio="municipio"
           :destaque="destaque"
           :filtrado="!!nomeFiltro || !!situacao"
+          :focos="focos"
           @area="aoMoverMapa"
           @selecionar="selecionarDoMapa"
         />
       </BaseCard>
 
-      <BaseCard class="lg:col-span-5" titulo="Imóveis" icone="tabela">
-        <TabelaImoveis
-          :itens="itens"
-          :total="total"
-          :pagina="pagina"
-          :tamanho="TAMANHO"
-          :carregando="carregando"
-          :erro="erro"
-          :selecionado-cod="selecionadoCod"
-          @selecionar="selecionarDaTabela"
-          @mudar-pagina="mudarPagina"
-          @tentar-novamente="carregarPagina"
-        />
-      </BaseCard>
+      <div class="space-y-5 lg:col-span-5">
+        <BaseCard titulo="Imóveis" icone="tabela">
+          <TabelaImoveis
+            :itens="itens"
+            :total="total"
+            :pagina="pagina"
+            :tamanho="TAMANHO"
+            :carregando="carregando"
+            :erro="erro"
+            :selecionado-cod="selecionadoCod"
+            @selecionar="selecionarDaTabela"
+            @mudar-pagina="mudarPagina"
+            @tentar-novamente="carregarPagina"
+          />
+        </BaseCard>
+
+        <BaseCard titulo="Indicadores do imóvel" icone="rastro">
+          <CardIndicadores
+            :cod-imovel="selecionadoCod"
+            :indicadores="indicadores"
+            :carregando="carregandoIndicadores"
+            :erro="erroIndicadores"
+            :calculando="calculando"
+            @calcular="calcular"
+            @tentar-novamente="carregarIndicadores(selecionadoCod)"
+          />
+        </BaseCard>
+      </div>
     </div>
   </div>
 </template>

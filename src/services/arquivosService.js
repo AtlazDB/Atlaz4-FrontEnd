@@ -5,9 +5,10 @@ import http from './http'
  *
  *   POST /arquivos/:id/processar
  *        200 → { arquivoId, status: 'PROCESSADO', execucaoId, versao,
- *                registrosLidos, registrosValidos, registrosInvalidos }
+ *                registrosLidos, registrosValidos, registrosInvalidos,
+ *                registrosForaDoRecorte }   (o último só nos focos do INPE)
  *        200 → { arquivoId, status: 'REJEITADO', execucaoId, mensagemErro }
- *        400 → { mensagem }   (só .zip da fonte CAR pode ser processado)
+ *        400 → { mensagem }   (fonte ou formato sem processamento: ver utils/processamento.js)
  *        404 → { mensagem }
  *        409 → { mensagem }   (o arquivo já está sendo processado)
  *
