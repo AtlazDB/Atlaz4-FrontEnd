@@ -32,6 +32,8 @@ const routes = [
     path: '/quarentena',
     name: 'quarentena',
     component: QuarentenaView,
+  },
+  {
     // ?imovel=<cod_imovel>&indicador=IRL|IFC
     path: '/rastreabilidade',
     name: 'rastreabilidade',
