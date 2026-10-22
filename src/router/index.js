@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ImportacaoView from '@/views/ImportacaoView.vue'
 import ConsultaView from '@/views/ConsultaView.vue'
+import QuarentenaView from '@/views/QuarentenaView.vue'
 
 /**
  * Uma rota por etapa do fluxo de dados. A trilha do topo (EtapasNav) lê a
@@ -25,6 +26,11 @@ const routes = [
     path: '/consulta',
     name: 'consulta',
     component: ConsultaView,
+  },
+  {
+    path: '/quarentena',
+    name: 'quarentena',
+    component: QuarentenaView,
   },
   // Qualquer endereço desconhecido volta para o começo do fluxo.
   { path: '/:caminho(.*)*', redirect: { name: 'importacao' } },
