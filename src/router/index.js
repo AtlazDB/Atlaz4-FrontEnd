@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ImportacaoView from '@/views/ImportacaoView.vue'
 import ConsultaView from '@/views/ConsultaView.vue'
+import QuarentenaView from '@/views/QuarentenaView.vue'
 import RastreabilidadeView from '@/views/RastreabilidadeView.vue'
 
 /**
@@ -26,6 +27,11 @@ const routes = [
     path: '/consulta',
     name: 'consulta',
     component: ConsultaView,
+  },
+  {
+    path: '/quarentena',
+    name: 'quarentena',
+    component: QuarentenaView,
   },
   {
     // ?imovel=<cod_imovel>&indicador=IRL|IFC

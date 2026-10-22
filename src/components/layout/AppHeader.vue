@@ -24,6 +24,7 @@ const areas = [
   { rota: 'importacao', rotulo: 'Ingestão de dados' },
   { rota: 'consulta', rotulo: 'Consulta territorial' },
   { rota: 'rastreabilidade', rotulo: 'Rastreabilidade' },
+  { rota: 'quarentena', rotulo: 'Quarentena' },
 ]
 </script>
 
