@@ -43,8 +43,10 @@
         <option value="">Todos os Status</option>
         <option value="PENDENTE">Pendente</option>
         <option value="EM_ANALISE">Em Análise</option>
+        <option value="CORRIGIDO">Corrigido</option>
         <option value="REVALIDADO">Revalidado</option>
         <option value="DESCARTADO">Descartado</option>
+        <option value="SUBSTITUIDO">Substituído por carga mais nova</option>
       </select>
       <button @click="limparFiltros" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-semibold rounded px-4 py-2 transition">Limpar Filtros</button>
     </div>
@@ -144,6 +146,9 @@ export default {
         case 'PENDENTE': return 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
         case 'EM_ANALISE': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
         case 'REVALIDADO': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+        case 'CORRIGIDO': return 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
+        // Encerrado sem ação do operador: uma carga mais nova tratou o registro de novo
+        case 'SUBSTITUIDO': return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
         default: return 'bg-red-500/10 text-red-400 border border-red-500/20';
       }
     }
