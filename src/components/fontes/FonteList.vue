@@ -1,6 +1,7 @@
 <script setup>
 import StatusBadge from '@/components/StatusBadge.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import BaseButton from '@/components/BaseButton.vue'
 import { formatarTamanho, formatarDataHora } from '@/utils/formato'
 
 /**
@@ -17,7 +18,7 @@ defineProps({
   selecionadaId: { type: [Number, null], default: null },
 })
 
-defineEmits(['selecionar', 'tentar-novamente'])
+defineEmits(['selecionar', 'tentar-novamente', 'executar'])
 </script>
 
 <template>
@@ -61,9 +62,9 @@ defineEmits(['selecionar', 'tentar-novamente'])
   <!-- Estado 4: a lista de verdade -->
   <ul v-else class="space-y-2">
     <li v-for="fonte in fontes" :key="fonte.id">
-      <button
+      <div
         :class="[
-          'w-full text-left rounded-xl border p-3.5 transition',
+          'w-full text-left rounded-xl border p-3.5 transition cursor-pointer',
           selecionadaId === fonte.id
             ? 'border-cyan-500/50 bg-cyan-500/10'
             : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900/60',
@@ -85,17 +86,29 @@ defineEmits(['selecionar', 'tentar-novamente'])
         </div>
 
         <div
-          v-if="fonte.arquivos?.length"
-          class="mt-2.5 pt-2.5 border-t border-slate-800/80 flex items-center gap-2 text-[11px]"
+          class="mt-2.5 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[11px]"
         >
-          <AppIcon nome="check" traco="3" class="h-3 w-3 shrink-0 text-emerald-400" />
-          <span class="text-slate-400 truncate">{{ fonte.arquivos[0].nome }}</span>
-          <span class="text-slate-600 shrink-0">
-            {{ formatarTamanho(fonte.arquivos[0].tamanho) }} ·
-            {{ formatarDataHora(fonte.arquivos[0].enviadoEm) }}
-          </span>
+          <div v-if="fonte.arquivos?.length" class="flex items-center gap-2 truncate">
+            <AppIcon nome="check" traco="3" class="h-3 w-3 shrink-0 text-emerald-400" />
+            <span class="text-slate-400 truncate">{{ fonte.arquivos[0].nome }}</span>
+            <span class="text-slate-600 shrink-0">
+              {{ formatarTamanho(fonte.arquivos[0].tamanho) }} ·
+              {{ formatarDataHora(fonte.arquivos[0].enviadoEm) }}
+            </span>
+          </div>
+          <div v-else class="text-slate-500">Nenhum arquivo recente</div>
+
+          <BaseButton
+            variante="secundario"
+            tamanho="sm"
+            class="shrink-0 ml-2"
+            @click.stop="$emit('executar', fonte)"
+          >
+            <AppIcon nome="executar" traco="2.2" class="h-3 w-3" />
+            Executar
+          </BaseButton>
         </div>
-      </button>
+      </div>
     </li>
   </ul>
 </template>

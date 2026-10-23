@@ -7,10 +7,10 @@ import FonteList from '@/components/fontes/FonteList.vue'
 import FonteForm from '@/components/fontes/FonteForm.vue'
 import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
-import { listarFontes, criarFonte, enviarArquivo } from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
 import { ehProcessavel } from '@/utils/processamento'
 import { formatarNumero } from '@/utils/formato'
+import { listarFontes, criarFonte, enviarArquivo, testarLinkFonte, executarIngestaoFonte } from '@/services/fontesService'
 
 /**
  * ==================================================================
@@ -18,9 +18,6 @@ import { formatarNumero } from '@/utils/formato'
  * ==================================================================
  * Esta é a única camada que conversa com o service. Os componentes
  * filhos só recebem props e emitem eventos.
- *
- * Ordem sugerida: faça os TODOs 1 a 6 primeiro (service, formulário e
- * upload), e só então volte aqui para ligar tudo.
  */
 
 // --- Estado da listagem -------------------------------------------
@@ -60,14 +57,7 @@ function avisar(tipo, texto) {
 }
 
 /**
- * TODO 7 — Carregar as fontes da API.
- *
- *   a) marque carregando.value = true e limpe erro.value
- *   b) chame `await listarFontes()` e jogue o resultado em fontes.value
- *   c) se der erro, guarde a mensagem em erro.value
- *   d) no finally, carregando.value = false
- *
- * O esqueleto do try/catch/finally já está aí — só preencha.
+ * Carregar as fontes da API.
  */
 async function carregar() {
   carregando.value = true
@@ -82,17 +72,8 @@ async function carregar() {
 }
 
 /**
- * TODO 8 — Cadastrar uma fonte nova.
+ * Cadastrar uma fonte nova.
  * Recebe os dados do evento 'salvar' emitido pelo FonteForm.
- *
- *   a) salvando.value = true
- *   b) `const nova = await criarFonte(dados)`
- *   c) coloque a nova fonte no topo da lista: fontes.value.unshift(nova)
- *      (ou chame carregar() de novo — as duas abordagens são válidas;
- *       unshift é mais rápido, recarregar é mais garantido)
- *   d) feche o formulário, limpe os campos (formRef.value.limpar())
- *      e chame avisar('ok', 'Fonte cadastrada.')
- *   e) no catch, avisar('erro', e.message)
  */
 async function salvarFonte(dados) {
   salvando.value = true
@@ -110,31 +91,8 @@ async function salvarFonte(dados) {
 }
 
 /**
- * TODO 9 — Enviar o arquivo, atualizando a barra de progresso.
+ * Enviar o arquivo, atualizando a barra de progresso.
  * Recebe o File do evento 'enviar' emitido pelo FonteUpload.
- *
- *   a) enviando.value = true e progresso.value = 0
- *   b) chame o service passando o callback de progresso:
- *
- *        const { fonte } = await enviarArquivo(
- *          selecionada.value.id,
- *          arquivo,
- *          (pct) => { progresso.value = pct },
- *        )
- *
- *      Esse terceiro argumento é a ponte: o Axios avisa o service,
- *      o service avisa esta função, esta função atualiza a ref, e o
- *      Vue redesenha a barra. Reatividade de ponta a ponta.
- *
- *   c) com a fonte atualizada que voltou do servidor, troque a versão
- *      antiga na lista:
- *
- *        const i = fontes.value.findIndex((f) => f.id === fonte.id)
- *        if (i !== -1) fontes.value[i] = fonte
- *        selecionada.value = fonte
- *
- *   d) uploadRef.value.limpar() e avisar('ok', 'Arquivo enviado.')
- *   e) no finally, enviando.value = false e progresso.value = 0
  */
 async function enviar(arquivo) {
   enviando.value = true
@@ -155,8 +113,6 @@ async function enviar(arquivo) {
     uploadRef.value.limpar()
     avisar('ok', 'Arquivo enviado.')
 
-    // Sem await de propósito: o aviso acima aparece na hora e o
-    // processamento segue em segundo plano (ver processar()).
     if (ehProcessavel(fonte, recebido)) processar(recebido)
   } catch (e) {
     avisar('erro', e.message)
@@ -168,13 +124,6 @@ async function enviar(arquivo) {
 
 /**
  * Manda o back-end processar um arquivo do CAR (.zip).
- *
- * A chamada é síncrona e pode levar muitos minutos, então quem chama esta
- * função NÃO usa await — a tela continua respondendo. O andamento aparece
- * pela consulta periódica (logo abaixo); o resultado final chega aqui.
- *
- * Atenção: REJEITADO volta com HTTP 200, então não cai no catch. O catch
- * só pega erro de requisição (400, 404, 409, servidor fora do ar...).
  */
 async function processar(arquivo) {
   const id = arquivo.id
@@ -203,44 +152,45 @@ async function processar(arquivo) {
   }
 }
 
-// O resultado fica na linha do arquivo e também sobe como aviso, para
-// quem estiver olhando outra fonte quando o processamento terminar.
+// O resultado fica na linha do arquivo e também sobe como aviso.
 function concluir(arquivo, tipo, texto) {
   resultados.value[arquivo.id] = { tipo, texto }
   avisar(tipo, `${arquivo.nome} — ${texto}`)
 }
 
+async function testarLink(dados) {
+  if (!dados.urlOrigem) {
+    avisar('erro', 'Informe a URL de origem para testar.')
+    return
+  }
+  try {
+    avisar('ok', 'Testando conexão com a URL...')
+    const resultado = await testarLinkFonte(dados)
+    avisar('ok', resultado.mensagem || 'Conexão bem-sucedida com a fonte!')
+  } catch (e) {
+    avisar('erro', 'Falha no teste de link: ' + e.message)
+  }
+}
+
 /**
- * Recarrega as fontes sem ligar o `carregando` — senão a lista viraria
- * esqueleto a cada 3 segundos. Se falhar, mantém o que está na tela e a
- * próxima volta da consulta tenta de novo.
+ * Recarrega as fontes sem ligar o `carregando`.
  */
 async function atualizar() {
-  if (atualizando) return // a volta anterior ainda não respondeu
+  if (atualizando) return
   atualizando = true
   try {
     fontes.value = await listarFontes()
-    // `selecionada` guarda o objeto antigo: troca pela versão nova da mesma fonte
     if (selecionada.value) {
       selecionada.value =
         fontes.value.find((f) => f.id === selecionada.value.id) ?? selecionada.value
     }
   } catch {
-    // silencioso de propósito — é só a consulta de fundo
+    // silencioso de propósito
   } finally {
     atualizando = false
   }
 }
 
-/**
- * Consulta periódica: enquanto houver arquivo PROCESSANDO, recarrega a
- * lista a cada 3 s. Conta também os ids que esta tela acabou de mandar
- * processar — a primeira consulta pode chegar antes de o back-end gravar
- * PROCESSANDO, e a consulta pararia cedo demais.
- *
- * A consulta liga e desliga sozinha pelo watch: ninguém chama
- * iniciarConsulta() direto.
- */
 const haProcessando = computed(
   () =>
     emProcessamento.value.length > 0 ||
@@ -259,9 +209,7 @@ function pararConsulta() {
 watch(haProcessando, (sim) => (sim ? iniciarConsulta() : pararConsulta()))
 
 /**
- * Exclui um arquivo REJEITADO — do catálogo e da zona bruta, sem volta.
- * Se o back-end recusar (409: não está rejeitado, ou já gerou versão de
- * dados), a mensagem chega pronta pelo interceptor do http.js.
+ * Exclui um arquivo REJEITADO.
  */
 async function excluir(arquivo) {
   const confirmado = window.confirm(
@@ -285,6 +233,27 @@ async function excluir(arquivo) {
 function selecionar(fonte) {
   selecionada.value = fonte
   uploadRef.value?.limpar()
+}
+
+/**
+ * Dispara a ingestão manual da fonte via API (Subtask 4)
+ */
+const executandoId = ref(null)
+
+async function executarFonte(fonte) {
+  if (executandoId.value === fonte.id) return
+
+  executandoId.value = fonte.id
+  try {
+    avisar('ok', `Iniciando ingestão da fonte ${fonte.sigla}...`)
+    const mensagemRetorno = await executarIngestaoFonte(fonte.id)
+    avisar('ok', mensagemRetorno)
+    await atualizar()
+  } catch (e) {
+    avisar('erro', 'Falha na execução: ' + e.message)
+  } finally {
+    executandoId.value = null
+  }
 }
 
 onMounted(carregar)
@@ -322,12 +291,9 @@ onBeforeUnmount(() => {
       <div class="lg:col-span-4">
         <BaseCard titulo="Fontes cadastradas" icone="camadas">
           <template #acoes>
-            <!-- Cadastro de fonte desabilitado por enquanto: o botão fica visível,
-                 mas não abre o formulário. Para reativar, remova o `disabled`. -->
             <BaseButton
               variante="secundario"
               tamanho="sm"
-              disabled
               @click="mostrandoForm = !mostrandoForm"
             >
               <AppIcon v-if="!mostrandoForm" nome="mais" traco="2.4" class="h-3 w-3" />
@@ -342,6 +308,7 @@ onBeforeUnmount(() => {
             :selecionada-id="selecionada?.id ?? null"
             @selecionar="selecionar"
             @tentar-novamente="carregar"
+            @executar="executarFonte"
           />
 
           <div v-if="mostrandoForm" class="mt-4 border-t border-slate-800 pt-4">
@@ -349,6 +316,7 @@ onBeforeUnmount(() => {
               ref="formRef"
               :salvando="salvando"
               @salvar="salvarFonte"
+              @testar-link="testarLink"
               @cancelar="mostrandoForm = false"
             />
           </div>
