@@ -11,7 +11,7 @@ import { ehProcessavel } from '@/utils/processamento'
  * Os botões "Processar" e "Excluir" só emitem 'processar' / 'excluir' —
  * quem faz a chamada é a ImportacaoView.
  *
- * O `status` do arquivo (RECEBIDO → PROCESSANDO → PROCESSADO | REJEITADO)
+ * O `status` do arquivo (RECEBIDO → AGUARDANDO_MAPEAMENTO → PROCESSANDO → PROCESSADO | REJEITADO)
  * não é o `status` da fonte (ativa | pendente | inativa). No mock o
  * arquivo vem sem status; aí a etiqueta simplesmente não aparece.
  */
@@ -28,6 +28,10 @@ const props = defineProps({
 defineEmits(['processar', 'excluir'])
 
 const etiquetas = {
+  AGUARDANDO_MAPEAMENTO: {
+    rotulo: 'Aguardando mapeamento',
+    classe: 'text-amber-300 bg-amber-500/10 border-amber-500/40',
+  },
   RECEBIDO: { rotulo: 'Recebido', classe: 'text-slate-300 bg-slate-500/10 border-slate-500/40' },
   PROCESSANDO: {
     rotulo: 'Processando',
@@ -49,7 +53,7 @@ function statusDe(arquivo) {
 function podeProcessar(arquivo) {
   return (
     ehProcessavel(props.fonte, arquivo) &&
-    ['RECEBIDO', 'REJEITADO'].includes(statusDe(arquivo))
+    ['RECEBIDO', 'AGUARDANDO_MAPEAMENTO', 'REJEITADO'].includes(statusDe(arquivo))
   )
 }
 

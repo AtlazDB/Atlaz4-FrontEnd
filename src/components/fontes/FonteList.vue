@@ -9,15 +9,21 @@ import { formatarTamanho, formatarDataHora } from '@/utils/formato'
  * Ele não sabe que existe uma API: só recebe uma lista via props e
  * avisa o pai (a ImportacaoView) quando alguém clica em algo, via emit.
  * Esse é o padrão "props para baixo, eventos para cima" do Vue.
+ *
+ * Cada fonte tem um botão "#" ao lado que abre o mapeamento de colunas.
+ * Quando a fonte tem colunas novas sem mapeamento, aparece um aviso âmbar
+ * e o "#" ganha destaque.
  */
 defineProps({
   fontes: { type: Array, required: true },
   carregando: { type: Boolean, default: false },
   erro: { type: String, default: '' },
   selecionadaId: { type: [Number, null], default: null },
+  /** id da fonte → quantidade de colunas novas sem mapeamento */
+  novas: { type: Object, default: () => ({}) },
 })
 
-defineEmits(['selecionar', 'tentar-novamente'])
+defineEmits(['selecionar', 'mapear', 'tentar-novamente'])
 </script>
 
 <template>
@@ -60,10 +66,10 @@ defineEmits(['selecionar', 'tentar-novamente'])
 
   <!-- Estado 4: a lista de verdade -->
   <ul v-else class="space-y-2">
-    <li v-for="fonte in fontes" :key="fonte.id">
+    <li v-for="fonte in fontes" :key="fonte.id" class="flex items-stretch gap-2">
       <button
         :class="[
-          'w-full text-left rounded-xl border p-3.5 transition',
+          'min-w-0 flex-1 text-left rounded-xl border p-3.5 transition',
           selecionadaId === fonte.id
             ? 'border-cyan-500/50 bg-cyan-500/10'
             : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900/60',
@@ -75,6 +81,14 @@ defineEmits(['selecionar', 'tentar-novamente'])
             <div class="flex items-center gap-2">
               <span class="font-mono text-[11px] text-cyan-400">{{ fonte.sigla }}</span>
               <StatusBadge :status="fonte.status" />
+              <span
+                v-if="novas[fonte.id] > 0"
+                class="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5
+                       text-[10px] font-semibold text-amber-300"
+                :title="`${novas[fonte.id]} coluna(s) nova(s) sem mapeamento`"
+              >
+                {{ novas[fonte.id] }} {{ novas[fonte.id] === 1 ? 'nova' : 'novas' }}
+              </span>
             </div>
             <p class="text-sm font-medium text-slate-100 mt-1 truncate">{{ fonte.nome }}</p>
             <p class="text-xs text-slate-500 truncate">{{ fonte.orgao }}</p>
@@ -95,6 +109,22 @@ defineEmits(['selecionar', 'tentar-novamente'])
             {{ formatarDataHora(fonte.arquivos[0].enviadoEm) }}
           </span>
         </div>
+      </button>
+
+      <!-- Botão irmão (não dentro do outro: botão dentro de botão é HTML inválido) -->
+      <button
+        type="button"
+        :class="[
+          'w-10 shrink-0 rounded-xl border font-mono text-base font-semibold transition',
+          novas[fonte.id] > 0
+            ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+            : 'border-slate-800 bg-slate-950/40 text-slate-500 hover:border-slate-700 hover:text-slate-200',
+        ]"
+        title="Mapear colunas"
+        :aria-label="`Mapear colunas de ${fonte.sigla}`"
+        @click="$emit('mapear', fonte)"
+      >
+        #
       </button>
     </li>
   </ul>
