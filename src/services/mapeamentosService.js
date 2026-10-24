@@ -20,3 +20,58 @@ export async function listarColunas(fonteId) {
   const { data } = await http.get(`/fontes/${fonteId}/colunas`)
   return data
 }
+
+/**
+ * Domínios de valores (ex.: STATUS_CAR) com seus valores ativos.
+ *   GET /dominios → [ { id, codigo, nome, descricao, valores: [ { valor, descricao } ] } ]
+ */
+export async function listarDominios() {
+  const { data } = await http.get('/dominios')
+  return data
+}
+
+/**
+ * Tabelas contra as quais uma coluna pode ser conferida (integridade cruzada).
+ *   GET /referencias-cruzadas → [ { codigo, nome } ]
+ */
+export async function listarReferenciasCruzadas() {
+  const { data } = await http.get('/referencias-cruzadas')
+  return data
+}
+
+/**
+ * Cria o mapeamento de uma coluna, com as regras de qualidade.
+ *   POST /fontes/:id/mapeamentos
+ *        201 → a regra criada
+ *        400 → { mensagem, campos }   (regra de negócio violada)
+ *        404 → { mensagem }           (fonte ou coluna não encontrada)
+ *        409 → { mensagem }           (coluna ou campo de destino já mapeado)
+ *
+ * @param {number} fonteId
+ * @param {object} mapeamento corpo do MapeamentoRequest
+ */
+export async function criarMapeamento(fonteId, mapeamento) {
+  const { data } = await http.post(`/fontes/${fonteId}/mapeamentos`, mapeamento)
+  return data
+}
+
+/**
+ * Mapeamentos (regras) já criados para uma fonte.
+ *   GET /fontes/:id/mapeamentos
+ *        200 → [ { id, colunaId, colunaNome, destinoTabela, campoDestino, tipoDado,
+ *                  formatoOrigem, obrigatorio, chave, bloquearRegressao, validarCpfCnpj,
+ *                  politicaGeometria, recortarPr, dominioId, dominioCodigo, referenciaCruzada } ]
+ */
+export async function listarMapeamentos(fonteId) {
+  const { data } = await http.get(`/fontes/${fonteId}/mapeamentos`)
+  return data
+}
+
+/**
+ * Remove um mapeamento; a coluna volta a ser "nova".
+ *   DELETE /fontes/:fonteId/mapeamentos/:mapeamentoId → 204
+ *        404 → { mensagem }   (mapeamento não encontrado)
+ */
+export async function excluirMapeamento(fonteId, mapeamentoId) {
+  await http.delete(`/fontes/${fonteId}/mapeamentos/${mapeamentoId}`)
+}

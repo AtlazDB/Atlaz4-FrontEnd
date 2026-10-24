@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import BaseButton from '@/components/BaseButton.vue'
 
 /**
  * Painel "Colunas detectadas": as colunas que o sistema encontrou nos
@@ -12,14 +13,18 @@ import AppIcon from '@/components/AppIcon.vue'
  *   mapeada — já tem regra de destino
  *   nova    — está no último arquivo e ainda não tem regra (precisa de atenção)
  *   ausente — tem regra, mas sumiu do último arquivo
+ *
+ * Só a coluna "nova" mostra o botão Mapear (emite 'selecionar').
  */
 const props = defineProps({
   colunas: { type: Array, required: true },
   carregando: { type: Boolean, default: false },
   erro: { type: String, default: '' },
+  /** id da coluna que está sendo mapeada agora (fica destacada) */
+  selecionadaId: { type: [Number, null], default: null },
 })
 
-defineEmits(['tentar-novamente'])
+defineEmits(['selecionar', 'tentar-novamente'])
 
 const etiquetas = {
   mapeada: {
@@ -94,7 +99,10 @@ const resumo = computed(() => {
       <li
         v-for="coluna in colunas"
         :key="coluna.id"
-        class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+        :class="[
+          'flex items-center gap-3 py-2.5 first:pt-0 last:pb-0',
+          selecionadaId === coluna.id ? 'rounded-lg bg-cyan-500/5' : '',
+        ]"
       >
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -105,6 +113,16 @@ const resumo = computed(() => {
             Exemplos: {{ exemplosDe(coluna) }}
           </p>
         </div>
+
+        <BaseButton
+          v-if="situacaoDe(coluna) === 'nova'"
+          variante="secundario"
+          tamanho="sm"
+          class="shrink-0"
+          @click="$emit('selecionar', coluna)"
+        >
+          Mapear
+        </BaseButton>
 
         <span
           v-if="etiquetas[situacaoDe(coluna)]"

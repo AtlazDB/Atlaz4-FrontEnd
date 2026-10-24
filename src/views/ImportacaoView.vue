@@ -8,6 +8,7 @@ import FonteForm from '@/components/fontes/FonteForm.vue'
 import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
 import ModalMapeamento from '@/components/mapeamento/ModalMapeamento.vue'
+import { listarColunas } from '@/services/mapeamentosService'
 import { listarFontes, criarFonte, enviarArquivo } from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
 import { ehProcessavel } from '@/utils/processamento'
@@ -26,6 +27,7 @@ import { formatarNumero } from '@/utils/formato'
 
 // --- Estado do mapeamento -----------------------------------------
 const mapeando = ref(false)
+const novasPorFonte = ref({})
 
 // --- Estado da listagem -------------------------------------------
 const fontes = ref([])
@@ -64,6 +66,28 @@ function avisar(tipo, texto) {
   timerAviso = setTimeout(() => (aviso.value = null), 5000)
 }
 
+// Conta as colunas "novas" de uma fonte para o aviso da lista. Se a fonte não
+// tem colunas ou o back não tem o endpoint (mock), simplesmente não há aviso.
+async function contarNovas(fonteId) {
+  try {
+    const colunas = await listarColunas(fonteId)
+    novasPorFonte.value[fonteId] = colunas.filter(
+      (c) => String(c.situacao).toLowerCase() === 'nova',
+    ).length
+  } catch {
+    delete novasPorFonte.value[fonteId]
+  }
+}
+
+function recarregarNovas() {
+  fontes.value.forEach((f) => contarNovas(f.id))
+}
+
+function abrirMapeamento(fonte) {
+  selecionar(fonte)
+  mapeando.value = true
+}
+
 /**
  * TODO 7 — Carregar as fontes da API.
  *
@@ -79,6 +103,7 @@ async function carregar() {
   erro.value = ''
   try {
     fontes.value = await listarFontes()
+        recarregarNovas()
   } catch (e) {
     erro.value = e.message
   } finally {
@@ -189,14 +214,7 @@ async function processar(arquivo) {
   delete resultados.value[id]
   try {
     const resposta = await processarArquivo(id)
-    if (resposta.status === 'RECEBIDO') {
-      // Quem processa é o Airflow: o resultado chega pela consulta periódica (ver atualizar()).
-      naFilaAirflow.value[id] = arquivo
-      resultados.value[id] = {
-        tipo: 'ok',
-        texto: 'Na fila do Airflow: o processamento começa em até 2 minutos.',
-      }
-    } else if (resposta.status === 'PROCESSADO') {
+        if (resposta.status === 'PROCESSADO') {
       concluir(
         arquivo,
         'ok',
@@ -204,8 +222,18 @@ async function processar(arquivo) {
           `${formatarNumero(resposta.registrosValidos)} válidos · ` +
           `${formatarNumero(resposta.registrosInvalidos)} inválidos.`,
       )
-    } else {
+    } else if (resposta.status === 'REJEITADO') {
       concluir(arquivo, 'erro', `Rejeitado: ${resposta.mensagemErro}`)
+    } else if (resposta.status === 'AGUARDANDO_MAPEAMENTO') {
+      concluir(arquivo, 'erro', 'Há colunas sem mapeamento. Mapeie pelo botão # e processe de novo.')
+    } else {
+      // 202: o processamento foi aceito e corre fora desta chamada. O resultado
+      // chega pela consulta periódica (ver atualizar()).
+      naFilaAirflow.value[id] = arquivo
+      resultados.value[id] = {
+        tipo: 'ok',
+        texto: 'Na fila do Airflow: o processamento começa em até 2 minutos.',
+      }
     }
   } catch (e) {
     concluir(arquivo, 'erro', e.message)
@@ -220,6 +248,7 @@ async function processar(arquivo) {
 function concluir(arquivo, tipo, texto) {
   resultados.value[arquivo.id] = { tipo, texto }
   avisar(tipo, `${arquivo.nome} — ${texto}`)
+  recarregarNovas()
 }
 
 /**
@@ -253,7 +282,15 @@ function acompanharFilaAirflow() {
   for (const [id, arquivo] of Object.entries(naFilaAirflow.value)) {
     const atual = fontes.value.flatMap((f) => f.arquivos ?? []).find((a) => String(a.id) === id)
     if (!atual) continue
-
+    
+    if (atual.status === 'AGUARDANDO_MAPEAMENTO') {
+      delete naFilaAirflow.value[id]
+      resultados.value[id] = {
+        tipo: 'erro',
+        texto: 'Há colunas sem mapeamento. Mapeie pelo botão # e processe de novo.',
+      }
+      continue
+    }
     if (atual.status === 'PROCESSANDO') {
       resultados.value[id] = { tipo: 'ok', texto: 'Processando no Airflow…' }
     } else if (atual.status === 'PROCESSADO') {
@@ -375,7 +412,9 @@ onBeforeUnmount(() => {
             :carregando="carregando"
             :erro="erro"
             :selecionada-id="selecionada?.id ?? null"
+            :novas="novasPorFonte"
             @selecionar="selecionar"
+            @mapear="abrirMapeamento"
             @tentar-novamente="carregar"
           />
 
@@ -417,24 +456,13 @@ onBeforeUnmount(() => {
             @excluir="excluir"
           />
         </BaseCard>
-                <BaseCard v-if="selecionada" titulo="Arquivos recebidos" icone="arquivo">
-          <template #acoes>
-            <BaseButton variante="secundario" tamanho="sm" @click="mapeando = true">
-              Mapear colunas
-            </BaseButton>
-          </template>
-
-          <ArquivoList
-            :fonte="selecionada"
-            :em-processamento="emProcessamento"
-            :resultados="resultados"
-            :excluindo="excluindo"
-            @processar="processar"
-            @excluir="excluir"
-          />
-        </BaseCard>
       </div>
     </div>
-    <ModalMapeamento :aberto="mapeando" :fonte="selecionada" @fechar="mapeando = false" />
+    <ModalMapeamento
+      :aberto="mapeando"
+      :fonte="selecionada"
+      @fechar="mapeando = false"
+      @alterado="selecionada && contarNovas(selecionada.id)"
+    />
   </div>
 </template>
