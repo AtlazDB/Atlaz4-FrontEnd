@@ -1,37 +1,52 @@
+import http from './http'
 
-import http from './http';
+export async function listarQuarentena({ texto, tipoErro, status, fonteId, pagina = 1, tamanho = 20 } = {}) {
+  const { data } = await http.get('/quarentena', {
+    params: {
+      texto: texto || undefined,
+      tipoErro: tipoErro || undefined,
+      status: status || undefined,
+      fonteId: fonteId || undefined,
+      page: pagina - 1,
+      size: tamanho,
+      sort: 'id,desc',
+    },
+  })
+  return data
+}
 
-export default {
-  listar(params) {
-    return http.get('/quarentena', { params });
-  },
+export async function buscarMetricas() {
+  const { data } = await http.get('/quarentena/metricas')
+  return data
+}
 
-  obterMetricas() {
-    return http.get('/quarentena/metricas');
-  },
+export async function buscarRegistro(id) {
+  const { data } = await http.get(`/quarentena/${id}`)
+  return data
+}
 
-  obterPorId(id) {
-    return http.get(`/quarentena/${id}`);
-  },
+/** null quando a geometria não pôde ser lida (204). */
+export async function buscarGeometria(id) {
+  const resposta = await http.get(`/quarentena/${id}/geometria`)
+  return resposta.status === 204 ? null : resposta.data
+}
 
-  // GeoJSON da geometria como chegou; 204 (data vazio) quando ela não pôde ser lida.
-  obterGeometria(id) {
-    return http.get(`/quarentena/${id}/geometria`);
-  },
+export async function iniciarAnalise(id) {
+  const { data } = await http.post(`/quarentena/${id}/iniciar-analise`)
+  return data
+}
 
-  iniciarAnalise(id) {
-    return http.post(`/quarentena/${id}/iniciar-analise`);
-  },
+export async function corrigir(id, payloadCorrigido, justificativa) {
+  const { data } = await http.post(`/quarentena/${id}/corrigir`, { payloadCorrigido, justificativa })
+  return data
+}
 
-  descartar(id, justificativa) {
-    return http.post(`/quarentena/${id}/descartar`, { justificativa });
-  },
+export async function revalidar(id) {
+  const { data } = await http.post(`/quarentena/${id}/revalidar`)
+  return data
+}
 
-  corrigir(id, payloadCorrigido) {
-    return http.post(`/quarentena/${id}/corrigir`, { payloadCorrigido });
-  },
-
-  revalidar(id) {
-    return http.post(`/quarentena/${id}/revalidar`);
-  }
-};
+export async function descartar(id, justificativa) {
+  const { data } = await http.post(`/quarentena/${id}/descartar`, { justificativa })
+  return data
+}
