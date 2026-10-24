@@ -7,6 +7,7 @@ import FonteList from '@/components/fontes/FonteList.vue'
 import FonteForm from '@/components/fontes/FonteForm.vue'
 import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
+import ModalMapeamento from '@/components/mapeamento/ModalMapeamento.vue'
 import { listarFontes, criarFonte, enviarArquivo } from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
 import { ehProcessavel } from '@/utils/processamento'
@@ -22,6 +23,9 @@ import { formatarNumero } from '@/utils/formato'
  * Ordem sugerida: faça os TODOs 1 a 6 primeiro (service, formulário e
  * upload), e só então volte aqui para ligar tudo.
  */
+
+// --- Estado do mapeamento -----------------------------------------
+const mapeando = ref(false)
 
 // --- Estado da listagem -------------------------------------------
 const fontes = ref([])
@@ -413,7 +417,24 @@ onBeforeUnmount(() => {
             @excluir="excluir"
           />
         </BaseCard>
+                <BaseCard v-if="selecionada" titulo="Arquivos recebidos" icone="arquivo">
+          <template #acoes>
+            <BaseButton variante="secundario" tamanho="sm" @click="mapeando = true">
+              Mapear colunas
+            </BaseButton>
+          </template>
+
+          <ArquivoList
+            :fonte="selecionada"
+            :em-processamento="emProcessamento"
+            :resultados="resultados"
+            :excluindo="excluindo"
+            @processar="processar"
+            @excluir="excluir"
+          />
+        </BaseCard>
       </div>
     </div>
+    <ModalMapeamento :aberto="mapeando" :fonte="selecionada" @fechar="mapeando = false" />
   </div>
 </template>
