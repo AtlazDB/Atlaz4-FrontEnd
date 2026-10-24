@@ -14,6 +14,11 @@ export default {
     return http.get(`/quarentena/${id}`);
   },
 
+  // GeoJSON da geometria como chegou; 204 (data vazio) quando ela não pôde ser lida.
+  obterGeometria(id) {
+    return http.get(`/quarentena/${id}/geometria`);
+  },
+
   iniciarAnalise(id) {
     return http.post(`/quarentena/${id}/iniciar-analise`);
   },
