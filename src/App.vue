@@ -1,10 +1,7 @@
 <script setup>
-import { useRoute } from 'vue-router'
-import AppHeader from '@/components/layout/AppHeader.vue'
+import AppMenu from '@/components/layout/AppMenu.vue'
+import AppTopo from '@/components/layout/AppTopo.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
-import EtapasNav from '@/components/layout/EtapasNav.vue'
-
-const route = useRoute()
 </script>
 
 <template>
@@ -13,15 +10,18 @@ const route = useRoute()
   <div class="glow -right-52 top-1/3 h-[520px] w-[520px] bg-indigo-500/10" />
   <div class="glow bottom-0 left-1/4 h-[480px] w-[480px] bg-emerald-500/10" />
 
-  <div class="relative z-10 mx-auto flex min-h-screen max-w-[1400px] flex-col px-4 py-6 md:px-6">
-    <AppHeader class="mb-5" />
-    <EtapasNav v-if="route.meta.etapas" class="mb-5" />
+  <div class="relative z-10 flex h-screen">
+    <AppMenu />
 
-    <main class="flex-1">
-      <!-- A tela da etapa atual entra aqui (ver src/router/index.js) -->
-      <RouterView />
-    </main>
+    <div class="flex min-w-0 flex-1 flex-col">
+      <AppTopo />
 
-    <AppFooter class="mt-6 pt-2" />
+      <main class="flex-1 overflow-y-auto px-4 py-6 md:px-7">
+        <div class="mx-auto max-w-[1320px]">
+          <RouterView />
+        </div>
+        <AppFooter class="mx-auto mt-8 max-w-[1320px] pb-2" />
+      </main>
+    </div>
   </div>
 </template>

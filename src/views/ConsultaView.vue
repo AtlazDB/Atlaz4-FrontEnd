@@ -15,7 +15,7 @@ import { buscarFocosNoMapa } from '@/services/focosService'
 import { buscarIndicadores, calcularIndicadores } from '@/services/indicadoresService'
 
 /**
- * Consulta territorial do Analista: imóveis rurais no mapa e numa tabela.
+ * Consulta do Analista (Imóveis rurais no menu): imóveis rurais no mapa e numa tabela.
  * É a única camada desta tela que fala com a API.
  *
  * Mapa e tabela são independentes: a tabela pagina TODOS os imóveis que
@@ -316,9 +316,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-5">
     <BaseCard
-      destaque
-      titulo="Imóveis rurais · Paraná"
-      icone="mapa"
       descricao="Filtre por município, situação no CAR ou código do imóvel. Aproxime o zoom no mapa para ver os
                  perímetros, e clique numa linha da tabela para localizar o imóvel."
     >
