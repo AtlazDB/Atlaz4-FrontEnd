@@ -40,9 +40,28 @@
 
         <!-- T6-07: Mapa Leaflet & Geometria -->
         <div class="space-y-2">
-          <h4 class="text-sm font-semibold text-gray-300">Visualização Espacial do Erro</h4>
-          <div id="mapa-quarentena" class="w-full h-64 rounded-lg border border-gray-800 z-10"></div>
-          <p v-if="semGeometria" class="text-xs text-gray-400">Este registro não tem geometria para exibir.</p>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h4 class="text-sm font-semibold text-gray-300">Visualização Espacial do Erro</h4>
+            <!-- Correção da geometria: manual (vértices / desenho) ou automática (prévia do RECTIFY) -->
+            <div v-if="!encerrado" class="flex flex-wrap gap-2">
+              <button v-if="!semGeometria" @click="alternarEdicao" :disabled="ocupado" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded text-xs font-semibold transition disabled:opacity-40">
+                {{ modoGeometria === 'editando' ? 'Concluir edição' : 'Editar vértices' }}
+              </button>
+              <button @click="desenharNova" :disabled="ocupado || modoGeometria !== 'visualizar'" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded text-xs font-semibold transition disabled:opacity-40">Desenhar nova</button>
+              <button v-if="!semGeometria" @click="corrigirAutomaticamente" :disabled="ocupado || modoGeometria !== 'visualizar'" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded text-xs font-semibold transition disabled:opacity-40">Corrigir automaticamente</button>
+              <template v-if="geometriaPendente">
+                <button @click="desfazerGeometria" :disabled="ocupado" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-semibold transition disabled:opacity-40">Desfazer</button>
+                <button @click="salvarGeometria" :disabled="ocupado" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition disabled:opacity-40">Salvar geometria</button>
+              </template>
+            </div>
+          </div>
+          <div id="mapa-quarentena" class="w-full h-72 rounded-lg border border-gray-800 z-10"></div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+            <span v-if="!semGeometria"><span class="inline-block w-3 h-0.5 align-middle bg-red-500 mr-1"></span>Original</span>
+            <span v-if="temGeometriaTrabalho"><span class="inline-block w-3 h-0.5 align-middle bg-emerald-500 mr-1"></span>{{ geometriaPendente ? 'Correção não salva' : 'Corrigida (salva)' }}</span>
+            <span v-if="semGeometria && !temGeometriaTrabalho">Este registro não tem geometria: use "Desenhar nova".</span>
+          </div>
+          <p v-if="mensagemGeometria" class="text-xs" :class="mensagemGeometria.erro ? 'text-red-400' : 'text-emerald-400'">{{ mensagemGeometria.texto }}</p>
         </div>
 
         <!-- Editor de Correção & Justificativa -->
@@ -91,10 +110,21 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+// Edição de vértices e desenho no Leaflet (layer.pm / map.pm).
+import '@geoman-io/leaflet-geoman-free';
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import quarentenaService from '@/services/quarentenaService';
 
 // Status em que a análise já acabou: o back recusa qualquer ação (409).
 const STATUS_ENCERRADOS = ['DESCARTADO', 'REVALIDADO', 'SUBSTITUIDO'];
+
+const ESTILO_ORIGINAL = { color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.2 };
+// Com uma correção por cima, a original fica tracejada para não confundir.
+const ESTILO_ORIGINAL_SOB_CORRECAO = { ...ESTILO_ORIGINAL, dashArray: '6 4', fillOpacity: 0.05 };
+const ESTILO_CORRIGIDA = { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.3 };
+
+// GeoJSON de uma resposta que pode ser 204 (sem geometria).
+const corpoOuNulo = (resposta) => (resposta.status === 204 ? null : resposta.data);
 
 export default {
   props: {
@@ -110,6 +140,17 @@ export default {
     const errosRevalidacao = ref([]);
     const quadroErros = ref(null);
     const encerrado = computed(() => STATUS_ENCERRADOS.includes(registro.value?.statusAnalise));
+
+    // Correção da geometria
+    const modoGeometria = ref('visualizar'); // visualizar | editando | desenhando
+    const geometriaPendente = ref(false); // a camada verde mudou e ainda não foi salva
+    const temGeometriaTrabalho = ref(false);
+    const mensagemGeometria = ref(null); // { texto, erro }
+    const ocupado = ref(false);
+    let geometriaOriginal = null;
+    let geometriaSalva = null; // a corrigida que está no banco
+    let camadaOriginal = null;
+    let camadaTrabalho = null; // a correção (salva, prévia, editada ou desenhada), em verde
     let map = null;
 
     watch(() => props.isOpen, async (newVal) => {
@@ -119,27 +160,37 @@ export default {
         payloadCorrigido.value = data.payloadCorrigido || data.payload || '';
         justificativa.value = '';
         errosRevalidacao.value = [];
+        mensagemGeometria.value = null;
+        modoGeometria.value = 'visualizar';
+        geometriaPendente.value = false;
 
-        // A geometria não vem no registro: o back serve à parte, já em GeoJSON.
-        let geojson = null;
+        // As geometrias não vêm no registro: o back serve à parte, já em GeoJSON.
         try {
-          const resposta = await quarentenaService.obterGeometria(props.registroId);
-          geojson = resposta.status === 204 ? null : resposta.data;
+          const [original, corrigida] = await Promise.all([
+            quarentenaService.obterGeometria(props.registroId),
+            quarentenaService.obterGeometriaCorrigida(props.registroId)
+          ]);
+          geometriaOriginal = corpoOuNulo(original);
+          geometriaSalva = corpoOuNulo(corrigida);
         } catch (e) {
           console.error('Erro ao buscar geometria do registro', e);
+          geometriaOriginal = null;
+          geometriaSalva = null;
         }
-        semGeometria.value = !geojson;
+        semGeometria.value = !geometriaOriginal;
 
         await nextTick();
-        inicializarMapa(data, geojson);
+        inicializarMapa(data);
       }
     });
 
-    function inicializarMapa(data, geojson) {
+    function inicializarMapa(data) {
       if (map) {
         map.remove();
         map = null;
       }
+      camadaOriginal = null;
+      camadaTrabalho = null;
 
       map = L.map('mapa-quarentena').setView([-25.4284, -49.2733], 7); // Paraná como referência quando não há geometria
       // Mesmo fundo do mapa da consulta: o CartoDB passou a exigir chave de API.
@@ -152,24 +203,135 @@ export default {
         maxZoom: 16
       }).addTo(map);
 
-      if (!geojson) return;
+      // O desenho de um polígono novo cai na camada de trabalho.
+      map.on('pm:create', ({ layer }) => {
+        map.removeLayer(layer);
+        trocarGeometriaTrabalho(layer.toGeoJSON().geometry);
+        modoGeometria.value = 'visualizar';
+        geometriaPendente.value = true;
+        mensagemGeometria.value = { texto: 'Polígono desenhado. Confira e clique em "Salvar geometria".' };
+      });
 
       try {
-        // Destaque vermelho; pontos viram círculo para não depender do ícone padrão do Leaflet.
-        const camada = L.geoJSON(geojson, {
-          style: { color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.3 },
-          pointToLayer: (_, latlng) => L.circleMarker(latlng, {
-            radius: 8,
-            color: '#ef4444',
-            fillColor: '#ef4444',
-            fillOpacity: 0.8
-          })
-        }).addTo(map);
-
-        camada.bindPopup(`<b>Erro:</b> ${data.tipoErro || data.motivo || '-'}`);
-        map.fitBounds(camada.getBounds(), { padding: [20, 20], maxZoom: 16 });
+        if (geometriaOriginal) {
+          // Pontos viram círculo para não depender do ícone padrão do Leaflet.
+          camadaOriginal = L.geoJSON(geometriaOriginal, {
+            style: ESTILO_ORIGINAL,
+            pmIgnore: true,
+            pointToLayer: (_, latlng) => L.circleMarker(latlng, { ...ESTILO_ORIGINAL, radius: 8, fillOpacity: 0.8 })
+          }).addTo(map);
+          camadaOriginal.bindPopup(`<b>Erro:</b> ${data.tipoErro || data.motivo || '-'}`);
+        }
+        trocarGeometriaTrabalho(geometriaSalva);
+        enquadrar();
       } catch (e) {
         console.error('Erro ao renderizar geometria no mapa', e);
+      }
+    }
+
+    // Põe (ou tira, com null) a geometria verde e ajusta o estilo da original.
+    function trocarGeometriaTrabalho(geojson) {
+      if (camadaTrabalho) {
+        map.removeLayer(camadaTrabalho);
+        camadaTrabalho = null;
+      }
+      if (geojson) {
+        camadaTrabalho = L.geoJSON(geojson, {
+          style: ESTILO_CORRIGIDA,
+          pointToLayer: (_, latlng) => L.circleMarker(latlng, { ...ESTILO_CORRIGIDA, radius: 8, fillOpacity: 0.8 })
+        }).addTo(map);
+      }
+      temGeometriaTrabalho.value = !!camadaTrabalho;
+      camadaOriginal?.setStyle(camadaTrabalho ? ESTILO_ORIGINAL_SOB_CORRECAO : ESTILO_ORIGINAL);
+    }
+
+    function enquadrar() {
+      const limites = L.latLngBounds([]);
+      if (camadaOriginal) limites.extend(camadaOriginal.getBounds());
+      if (camadaTrabalho) limites.extend(camadaTrabalho.getBounds());
+      if (limites.isValid()) map.fitBounds(limites, { padding: [20, 20], maxZoom: 16 });
+    }
+
+    // Uma geometria só a partir da camada verde: o back espera o "geometry" de um GeoJSON.
+    function geometriaDaCamadaTrabalho() {
+      const geometrias = camadaTrabalho.toGeoJSON().features.map((f) => f.geometry);
+      if (geometrias.length === 1) return geometrias[0];
+      return {
+        type: 'MultiPolygon',
+        coordinates: geometrias.flatMap((g) => (g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates]))
+      };
+    }
+
+    // Manual: arrasta, cria (no meio de uma aresta) ou apaga (clique direito) vértices.
+    // Sem correção ainda, a edição começa de uma cópia da original.
+    function alternarEdicao() {
+      if (modoGeometria.value === 'editando') {
+        camadaTrabalho.eachLayer((camada) => camada.pm.disable());
+        modoGeometria.value = 'visualizar';
+        mensagemGeometria.value = { texto: 'Edição concluída. Clique em "Salvar geometria" para gravar.' };
+        return;
+      }
+      if (!camadaTrabalho) trocarGeometriaTrabalho(geometriaOriginal);
+      // O Oracle é quem decide se ficou válida: aqui a edição é livre.
+      camadaTrabalho.eachLayer((camada) => camada.pm.enable({ allowSelfIntersection: true }));
+      modoGeometria.value = 'editando';
+      geometriaPendente.value = true;
+      mensagemGeometria.value = { texto: 'Arraste os vértices; clique no meio de uma aresta para criar um e com o botão direito para apagar.' };
+    }
+
+    function desenharNova() {
+      modoGeometria.value = 'desenhando';
+      geometriaPendente.value = true; // deixa o "Desfazer" à mão para cancelar o desenho
+      mensagemGeometria.value = { texto: 'Clique no mapa para marcar os vértices e no primeiro para fechar o polígono.' };
+      map.pm.enableDraw('Polygon', { pathOptions: ESTILO_CORRIGIDA, allowSelfIntersection: false });
+    }
+
+    // Automática: só mostra a prévia (verde); grava quando o operador salvar.
+    async function corrigirAutomaticamente() {
+      ocupado.value = true;
+      try {
+        const { data } = await quarentenaService.sugerirCorrecaoGeometria(registro.value.id);
+        trocarGeometriaTrabalho(data);
+        enquadrar();
+        geometriaPendente.value = true;
+        mensagemGeometria.value = { texto: 'Prévia da correção automática em verde. Ajuste os vértices se precisar e salve.' };
+      } catch (e) {
+        mensagemGeometria.value = { texto: e.message, erro: true };
+      } finally {
+        ocupado.value = false;
+      }
+    }
+
+    function desfazerGeometria() {
+      map.pm.disableDraw();
+      trocarGeometriaTrabalho(geometriaSalva);
+      modoGeometria.value = 'visualizar';
+      geometriaPendente.value = false;
+      mensagemGeometria.value = null;
+    }
+
+    async function salvarGeometria() {
+      map.pm.disableDraw();
+      if (modoGeometria.value === 'editando') camadaTrabalho.eachLayer((camada) => camada.pm.disable());
+      modoGeometria.value = 'visualizar';
+      if (!camadaTrabalho) {
+        mensagemGeometria.value = { texto: 'Nada para salvar: termine o desenho (clique no primeiro vértice).', erro: true };
+        return;
+      }
+      ocupado.value = true;
+      try {
+        const geometria = geometriaDaCamadaTrabalho();
+        const { data } = await quarentenaService.salvarGeometriaCorrigida(registro.value.id, geometria, justificativa.value || null);
+        registro.value = data;
+        geometriaSalva = geometria;
+        geometriaPendente.value = false;
+        mensagemGeometria.value = { texto: 'Geometria salva. O registro ficou CORRIGIDO: clique em "Revalidar" para conferir.' };
+        emit('atualizado');
+      } catch (e) {
+        // Ex.: o Oracle ainda acha a geometria inválida. A edição continua na tela para ajustar.
+        mensagemGeometria.value = { texto: e.message, erro: true };
+      } finally {
+        ocupado.value = false;
       }
     }
 
@@ -207,7 +369,11 @@ export default {
       }
     }
 
-    return { registro, payloadCorrigido, justificativa, semGeometria, errosRevalidacao, quadroErros, encerrado, executarAcao };
+    return {
+      registro, payloadCorrigido, justificativa, semGeometria, errosRevalidacao, quadroErros, encerrado, executarAcao,
+      modoGeometria, geometriaPendente, temGeometriaTrabalho, mensagemGeometria, ocupado,
+      alternarEdicao, desenharNova, corrigirAutomaticamente, desfazerGeometria, salvarGeometria
+    };
   }
 };
 </script>
