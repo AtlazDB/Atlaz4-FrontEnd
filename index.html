@@ -8,6 +8,11 @@
       content="Governança, controle de qualidade e rastreabilidade de dados ambientais de imóveis rurais."
     />
     <title>GeoRural DataHub</title>
+    <script>
+      try {
+        if (localStorage.getItem('georural-tema') === 'claro') document.documentElement.classList.add('claro')
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

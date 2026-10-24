@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
 import parana from '@/assets/parana.json'
+import { useTema } from '@/composables/useTema'
 
 // Objetos do Leaflet fora de ref(): o proxy do Vue atrapalha o Leaflet.
 const props = defineProps({
@@ -9,8 +10,13 @@ const props = defineProps({
   ponto: { type: Array, default: null },
 })
 
+const { claro } = useTema()
+const fundoEsri = () =>
+  `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${claro.value ? 'Light' : 'Dark'}_Gray_Base/MapServer/tile/{z}/{y}/{x}`
+
 const container = ref(null)
 let mapa = null
+let fundo = null
 let camada = null
 let limitesParana = null
 
@@ -59,8 +65,7 @@ function enquadrar() {
 
 onMounted(() => {
   mapa = L.map(container.value, { zoomControl: false, attributionControl: false })
-  const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
-  L.tileLayer(`${esri}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 16 }).addTo(mapa)
+  fundo = L.tileLayer(fundoEsri(), { maxZoom: 16 }).addTo(mapa)
   const contorno = L.geoJSON(parana, {
     interactive: false,
     style: { color: '#64748b', weight: 1, dashArray: '4 4', fill: false },
@@ -71,6 +76,7 @@ onMounted(() => {
 })
 
 watch(() => [props.geometria, props.ponto], desenhar)
+watch(claro, () => fundo?.setUrl(fundoEsri()))
 
 onBeforeUnmount(() => {
   mapa?.remove()

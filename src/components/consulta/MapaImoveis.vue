@@ -5,6 +5,7 @@ import { formatarArea, formatarDataHora, formatarSituacao } from '@/utils/format
 // Contorno do estado, da API de malhas do IBGE (qualidade intermediária, 9 KB):
 // servicodados.ibge.gov.br/api/v3/malhas/estados/41?formato=application/vnd.geo+json
 import parana from '@/assets/parana.json'
+import { useTema } from '@/composables/useTema'
 
 /**
  * Mapa dos imóveis rurais, carregado por área visível.
@@ -40,15 +41,28 @@ const ZOOM_PARANA = 7
 const ZOOM_MINIMO = 11 // abaixo disso a área visível tem imóveis demais
 const ZOOM_MAXIMO = 16 // o fundo da Esri não tem tiles além disso
 
-const estilo = {
-  imovel: { color: '#22d3ee', weight: 1, fillColor: '#22d3ee', fillOpacity: 0.15 },
-  destaque: { color: '#f8fafc', weight: 2.5, fillColor: '#22d3ee', fillOpacity: 0.4 },
-  municipio: { color: '#cbd5e1', weight: 2, dashArray: '6 4', fill: false },
-  estado: { color: '#64748b', weight: 1.5, fill: false },
-  // mesma cor do fundo da aplicação (#0b0f19): fora do PR o mapa "some"
-  mascara: { stroke: false, fillColor: '#0b0f19', fillOpacity: 0.85 },
-  foco: { radius: 4, color: '#fb923c', weight: 1, fillColor: '#f97316', fillOpacity: 0.9 },
+const { claro } = useTema()
+
+// A máscara tem a cor do fundo da aplicação: fora do PR o mapa "some".
+function paleta(temaClaro) {
+  const c = temaClaro
+    ? { linha: '#0891b2', destaque: '#0f172a', municipio: '#475569', estado: '#94a3b8', fundo: '#eef2f6' }
+    : { linha: '#22d3ee', destaque: '#f8fafc', municipio: '#cbd5e1', estado: '#64748b', fundo: '#0b0f19' }
+  return {
+    imovel: { color: c.linha, weight: 1, fillColor: '#22d3ee', fillOpacity: 0.15 },
+    destaque: { color: c.destaque, weight: 2.5, fillColor: '#22d3ee', fillOpacity: 0.4 },
+    municipio: { color: c.municipio, weight: 2, dashArray: '6 4', fill: false },
+    estado: { color: c.estado, weight: 1.5, fill: false },
+    mascara: { stroke: false, fillColor: c.fundo, fillOpacity: 0.85 },
+    foco: { radius: 4, color: '#fb923c', weight: 1, fillColor: '#f97316', fillOpacity: 0.9 },
+  }
 }
+
+let estilo = paleta(claro.value)
+
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
+const fundoEsri = (camada) =>
+  `${ESRI}/World_${claro.value ? 'Light' : 'Dark'}_Gray_${camada}/MapServer/tile/{z}/{y}/{x}`
 
 const container = ref(null)
 const perto = ref(false) // zoom >= ZOOM_MINIMO
@@ -58,6 +72,10 @@ let camadaImoveis = null
 let camadaDestaque = null
 let camadaMunicipio = null
 let camadaFocos = null
+let fundo = null
+let referencia = null
+let mascara = null
+let contornoEstado = null
 
 /** Legenda: diz exatamente quais focos estão desenhados (os que o IFC conta). */
 const legendaFocos = computed(() => {
@@ -101,26 +119,19 @@ onMounted(() => {
   // do mapa na tela: numa tela estreita ele é menor que num monitor largo.
   mapa.setMinZoom(mapa.getBoundsZoom(limitesParana))
 
-  // Fundo escuro da Esri: não exige chave de API (o da CARTO, usado no
-  // protótipo, passou a exigir). A camada de referência põe os nomes das
-  // cidades por cima do fundo.
-  const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
+  // Esri não exige chave de API (a CARTO do protótipo passou a exigir).
   const atribuicao =
     'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap · Contorno do PR: IBGE'
-  L.tileLayer(`${esri}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
-    attribution: atribuicao,
-    maxZoom: ZOOM_MAXIMO,
-  }).addTo(mapa)
-  L.tileLayer(`${esri}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {
-    maxZoom: ZOOM_MAXIMO,
-  }).addTo(mapa)
+  fundo = L.tileLayer(fundoEsri('Base'), { attribution: atribuicao, maxZoom: ZOOM_MAXIMO }).addTo(mapa)
+  referencia = L.tileLayer(fundoEsri('Reference'), { maxZoom: ZOOM_MAXIMO }).addTo(mapa)
 
   desenharMascara()
 
   // Uma camada só para os imóveis, reaproveitada a cada movimento: troca-se
   // o conteúdo (clearLayers + addData), não a camada.
-  camadaImoveis = L.geoJSON(null, { style: estilo.imovel, onEachFeature: prepararImovel }).addTo(mapa)
-  camadaDestaque = L.geoJSON(null, { style: estilo.destaque, interactive: false }).addTo(mapa)
+  // style como função para os imóveis carregados depois de trocar o tema.
+  camadaImoveis = L.geoJSON(null, { style: () => estilo.imovel, onEachFeature: prepararImovel }).addTo(mapa)
+  camadaDestaque = L.geoJSON(null, { style: () => estilo.destaque, interactive: false }).addTo(mapa)
   camadaFocos = L.geoJSON(null, {
     pointToLayer: (_feature, posicao) => L.circleMarker(posicao, estilo.foco),
     onEachFeature: prepararFoco,
@@ -138,6 +149,18 @@ onMounted(() => {
 onBeforeUnmount(() => {
   mapa?.remove()
   mapa = null
+})
+
+watch(claro, (temaClaro) => {
+  estilo = paleta(temaClaro)
+  if (!mapa) return
+  fundo.setUrl(fundoEsri('Base'))
+  referencia.setUrl(fundoEsri('Reference'))
+  mascara.setStyle(estilo.mascara)
+  contornoEstado.setStyle(estilo.estado)
+  camadaImoveis.setStyle(estilo.imovel)
+  camadaDestaque.setStyle(estilo.destaque)
+  camadaMunicipio?.setStyle(estilo.municipio)
 })
 
 watch(() => props.camada, desenharImoveis)
@@ -172,8 +195,8 @@ function desenharMascara() {
     .flatMap((f) => f.geometry.coordinates) // MultiPolygon → lista de polígonos
     .map(([anelExterno]) => anelExterno.map(([lon, lat]) => [lat, lon]))
 
-  L.polygon([mundo, ...buracos], { ...estilo.mascara, interactive: false }).addTo(mapa)
-  L.geoJSON(parana, { style: estilo.estado, interactive: false }).addTo(mapa)
+  mascara = L.polygon([mundo, ...buracos], { ...estilo.mascara, interactive: false }).addTo(mapa)
+  contornoEstado = L.geoJSON(parana, { style: estilo.estado, interactive: false }).addTo(mapa)
 }
 
 /** Diz à view qual caixa buscar — ou `null`, se o zoom estiver longe demais. */

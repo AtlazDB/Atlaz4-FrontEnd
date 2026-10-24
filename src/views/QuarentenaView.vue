@@ -260,10 +260,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-5">
     <BaseCard
-      destaque
-      titulo="Quarentena"
-      icone="escudo"
-      cor-icone="text-amber-300"
       descricao="Registros que não cumpriram alguma regra do mapeamento. O dado original na zona bruta nunca é alterado: a correção é guardada à parte e validada de novo antes de ir para a zona tratada."
     >
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
