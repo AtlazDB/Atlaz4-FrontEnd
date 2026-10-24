@@ -33,13 +33,12 @@
 
     <!-- Barra de Filtros -->
     <div class="bg-[#161b22] border border-gray-800 p-4 rounded-xl mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-      <input v-model="filtros.busca" @input="carregarRegistros" placeholder="Buscar por chave natural..." class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500" />
-      <select v-model="filtros.tipoErro" @change="carregarRegistros" class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500">
+      <input v-model="filtros.busca" @input="filtrar" placeholder="Buscar por chave natural..." class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500" />
+      <select v-model="filtros.tipoErro" @change="filtrar" class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500">
         <option value="">Todos os Tipos de Erro</option>
-        <option value="GEOMETRIA_INVALIDA">Geometria Inválida</option>
-        <option value="CODIGO_AUSENTE">Código Ausente</option>
+        <option v-for="tipo in tiposErro" :key="tipo.valor" :value="tipo.valor">{{ tipo.rotulo }}</option>
       </select>
-      <select v-model="filtros.status" @change="carregarRegistros" class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500">
+      <select v-model="filtros.status" @change="filtrar" class="bg-black/40 border border-gray-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500">
         <option value="">Todos os Status</option>
         <option value="PENDENTE">Pendente</option>
         <option value="EM_ANALISE">Em Análise</option>
@@ -79,8 +78,20 @@
               <button @click="abrirDetalhes(reg.id)" class="px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 rounded text-xs font-semibold transition">Analisar</button>
             </td>
           </tr>
+          <tr v-if="registros.length === 0">
+            <td colspan="6" class="p-6 text-center text-sm text-gray-400">Nenhum registro encontrado.</td>
+          </tr>
         </tbody>
       </table>
+
+      <!-- Paginação -->
+      <div class="flex items-center justify-between px-4 py-3 border-t border-gray-800 text-xs text-gray-400">
+        <span>{{ totalRegistros }} registro(s) · página {{ totalPaginas ? pagina + 1 : 0 }} de {{ totalPaginas }}</span>
+        <div class="flex gap-2">
+          <button @click="irParaPagina(pagina - 1)" :disabled="pagina === 0" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">Anterior</button>
+          <button @click="irParaPagina(pagina + 1)" :disabled="pagina + 1 >= totalPaginas" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">Próxima</button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal de Detalhes -->
@@ -94,6 +105,25 @@ import { ref, onMounted } from 'vue';
 import quarentenaService from '@/services/quarentenaService';
 import QuarentenaModal from '@/components/quarentena/QuarentenaModal.vue';
 
+const TAMANHO_PAGINA = 20;
+
+// Os códigos aceitos pela coluna TIPO_ERRO (check constraint da V10).
+const TIPOS_ERRO = [
+  { valor: 'CAMPO_OBRIGATORIO_AUSENTE', rotulo: 'Campo obrigatório ausente' },
+  { valor: 'CAMPO_EM_BRANCO', rotulo: 'Campo em branco' },
+  { valor: 'TIPO_DE_DADO_INVALIDO', rotulo: 'Tipo de dado inválido' },
+  { valor: 'VALOR_FORA_DO_DOMINIO', rotulo: 'Valor fora do domínio' },
+  { valor: 'REFERENCIA_NAO_ENCONTRADA', rotulo: 'Referência não encontrada' },
+  { valor: 'REGRESSAO_DE_VALOR', rotulo: 'Regressão de valor' },
+  { valor: 'CPF_CNPJ_INVALIDO', rotulo: 'CPF/CNPJ inválido' },
+  { valor: 'CHAVE_NATURAL_DUPLICADA', rotulo: 'Chave natural duplicada' },
+  { valor: 'GEOMETRIA_NULA', rotulo: 'Geometria nula' },
+  { valor: 'GEOMETRIA_MALFORMADA', rotulo: 'Geometria malformada' },
+  { valor: 'GEOMETRIA_INVALIDA', rotulo: 'Geometria inválida' },
+  { valor: 'GEOMETRIA_TIPO_INCOMPATIVEL', rotulo: 'Tipo de geometria incompatível' },
+  { valor: 'FORA_DO_RECORTE_TERRITORIAL', rotulo: 'Fora do recorte territorial' }
+];
+
 export default {
   components: { QuarentenaModal },
   setup() {
@@ -102,14 +132,36 @@ export default {
     const filtros = ref({ busca: '', tipoErro: '', status: '' });
     const modalAberto = ref(false);
     const registroSelecionado = ref(null);
+    const pagina = ref(0);
+    const totalPaginas = ref(0);
+    const totalRegistros = ref(0);
 
     async function carregarRegistros() {
+      // O back chama a busca de "texto"; filtro vazio não vai na URL.
+      const params = { page: pagina.value, size: TAMANHO_PAGINA, sort: 'id,desc' };
+      if (filtros.value.busca.trim()) params.texto = filtros.value.busca.trim();
+      if (filtros.value.tipoErro) params.tipoErro = filtros.value.tipoErro;
+      if (filtros.value.status) params.status = filtros.value.status;
+
       try {
-        const { data } = await quarentenaService.listar(filtros.value);
-        registros.value = data.content || data; // Ajustar conforme paginação do back
+        const { data } = await quarentenaService.listar(params);
+        registros.value = data.content;
+        totalPaginas.value = data.totalPages;
+        totalRegistros.value = data.totalElements;
       } catch (e) {
         console.error('Erro ao buscar registros', e);
       }
+    }
+
+    // Filtro novo volta para a primeira página.
+    function filtrar() {
+      pagina.value = 0;
+      carregarRegistros();
+    }
+
+    function irParaPagina(nova) {
+      pagina.value = nova;
+      carregarRegistros();
     }
 
     async function carregarMetricas() {
@@ -128,12 +180,12 @@ export default {
 
     function filtrarPorStatus(status) {
       filtros.value.status = filtros.value.status === status ? '' : status;
-      carregarRegistros();
+      filtrar();
     }
 
     function limparFiltros() {
       filtros.value = { busca: '', tipoErro: '', status: '' };
-      carregarRegistros();
+      filtrar();
     }
 
     function abrirDetalhes(id) {
@@ -157,7 +209,7 @@ export default {
       carregarDados();
     });
 
-    return { registros, metricas, filtros, modalAberto, registroSelecionado, carregarRegistros, carregarDados, filtrarPorStatus, limparFiltros, abrirDetalhes, statusBadge };
+    return { registros, metricas, filtros, modalAberto, registroSelecionado, pagina, totalPaginas, totalRegistros, tiposErro: TIPOS_ERRO, carregarRegistros, carregarDados, filtrar, irParaPagina, filtrarPorStatus, limparFiltros, abrirDetalhes, statusBadge };
   }
 };
 </script>
