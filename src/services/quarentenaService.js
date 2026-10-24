@@ -19,6 +19,20 @@ export default {
     return http.get(`/quarentena/${id}/geometria`);
   },
 
+  // A geometria salva pelo operador; 204 enquanto não houver correção.
+  obterGeometriaCorrigida(id) {
+    return http.get(`/quarentena/${id}/geometria-corrigida`);
+  },
+
+  // Prévia da correção automática (RECTIFY do Oracle): não grava nada.
+  sugerirCorrecaoGeometria(id) {
+    return http.post(`/quarentena/${id}/geometria/correcao-automatica`);
+  },
+
+  salvarGeometriaCorrigida(id, geometria, justificativa) {
+    return http.put(`/quarentena/${id}/geometria-corrigida`, { geometria, justificativa });
+  },
+
   iniciarAnalise(id) {
     return http.post(`/quarentena/${id}/iniciar-analise`);
   },
