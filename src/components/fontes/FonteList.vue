@@ -13,6 +13,10 @@ import { formatarTamanho, formatarDataHora } from '@/utils/formato'
  * Cada fonte tem um botão "#" ao lado que abre o mapeamento de colunas.
  * Quando a fonte tem colunas novas sem mapeamento, aparece um aviso âmbar
  * e o "#" ganha destaque.
+ *
+ * Fonte por link (modalidade LINK) ganha a etiqueta "link" e o botão
+ * "Executar", que pede a coleta agora. Quem faz a coleta é a
+ * ImportacaoView; aqui só se avisa com o evento 'executar'.
  */
 defineProps({
   fontes: { type: Array, required: true },
@@ -21,9 +25,11 @@ defineProps({
   selecionadaId: { type: [Number, null], default: null },
   /** id da fonte → quantidade de colunas novas sem mapeamento */
   novas: { type: Object, default: () => ({}) },
+  /** id da fonte com coleta em andamento (só uma por vez) */
+  executandoId: { type: [Number, null], default: null },
 })
 
-defineEmits(['selecionar', 'mapear', 'tentar-novamente'])
+defineEmits(['selecionar', 'mapear', 'executar', 'tentar-novamente'])
 </script>
 
 <template>
@@ -82,6 +88,14 @@ defineEmits(['selecionar', 'mapear', 'tentar-novamente'])
               <span class="font-mono text-[11px] text-cyan-400">{{ fonte.sigla }}</span>
               <StatusBadge :status="fonte.status" />
               <span
+                v-if="fonte.modalidade === 'LINK'"
+                class="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5
+                       text-[10px] font-semibold text-cyan-300"
+                :title="fonte.urlOrigem"
+              >
+                link
+              </span>
+              <span
                 v-if="novas[fonte.id] > 0"
                 class="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5
                        text-[10px] font-semibold text-amber-300"
@@ -111,7 +125,28 @@ defineEmits(['selecionar', 'mapear', 'tentar-novamente'])
         </div>
       </button>
 
-      <!-- Botão irmão (não dentro do outro: botão dentro de botão é HTML inválido) -->
+      <!-- Botões irmãos (não dentro do outro: botão dentro de botão é HTML inválido) -->
+      <button
+        v-if="fonte.modalidade === 'LINK'"
+        type="button"
+        :disabled="executandoId !== null"
+        :class="[
+          'w-10 shrink-0 grid place-items-center rounded-xl border transition',
+          executandoId === fonte.id
+            ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300'
+            : 'border-slate-800 bg-slate-950/40 text-slate-500 hover:border-cyan-500/40 hover:text-cyan-300',
+          executandoId !== null && executandoId !== fonte.id ? 'opacity-40' : '',
+        ]"
+        :title="executandoId === fonte.id ? 'Coletando…' : 'Executar agora: coletar o link'"
+        :aria-label="`Executar a coleta de ${fonte.sigla}`"
+        @click="$emit('executar', fonte)"
+      >
+        <AppIcon
+          :nome="executandoId === fonte.id ? 'atualizar' : 'executar'"
+          traco="2.2"
+          :class="['h-4 w-4', executandoId === fonte.id ? 'animate-spin' : '']"
+        />
+      </button>
       <button
         type="button"
         :class="[
