@@ -10,6 +10,8 @@ import {
   buscarMetricas,
   buscarRegistro,
   buscarGeometria,
+  buscarGeometriaCorrigida,
+  salvarGeometriaCorrigida,
   iniciarAnalise,
   corrigir,
   revalidar,
@@ -133,6 +135,7 @@ const gaveta = reactive({
   aberta: false,
   registro: null,
   geometria: null,
+  geometriaCorrigida: null,
   carregandoGeometria: false,
   revalidacao: null,
   payload: '',
@@ -148,6 +151,7 @@ async function abrir(id) {
     aberta: true,
     registro: registros.value.find((r) => r.id === id) ?? null,
     geometria: null,
+    geometriaCorrigida: null,
     carregandoGeometria: true,
     revalidacao: null,
     payload: '',
@@ -156,9 +160,14 @@ async function abrir(id) {
     erro: null,
   })
   try {
-    const [registro, geometria] = await Promise.all([buscarRegistro(id), buscarGeometria(id)])
+    const [registro, geometria, geometriaCorrigida] = await Promise.all([
+      buscarRegistro(id),
+      buscarGeometria(id),
+      buscarGeometriaCorrigida(id),
+    ])
     gaveta.registro = registro
     gaveta.geometria = geometria
+    gaveta.geometriaCorrigida = geometriaCorrigida
   } catch (e) {
     gaveta.erro = e.message
   } finally {
@@ -210,6 +219,15 @@ function aoSalvarCorrecao() {
   executar('corrigir', async () => {
     gaveta.registro = await corrigir(gaveta.registro.id, gaveta.payload, gaveta.justificativa || undefined)
     mostrarAviso('Correção salva. Falta revalidar para gravar na zona tratada.')
+  })
+}
+
+// Se o Oracle recusar, o motivo aparece no rodapé e a edição continua no mapa.
+function aoSalvarGeometria(geometria) {
+  executar('geometria', async () => {
+    gaveta.registro = await salvarGeometriaCorrigida(gaveta.registro.id, geometria, gaveta.justificativa || undefined)
+    gaveta.geometriaCorrigida = geometria
+    mostrarAviso('Geometria salva. Falta revalidar para gravar na zona tratada.')
   })
 }
 
@@ -435,8 +453,11 @@ onBeforeUnmount(() => {
         v-model:justificativa="gaveta.justificativa"
         :registro="gaveta.registro"
         :geometria="gaveta.geometria"
+        :geometria-corrigida="gaveta.geometriaCorrigida"
         :carregando-geometria="gaveta.carregandoGeometria"
         :revalidacao="gaveta.revalidacao"
+        :salvando-geometria="gaveta.ocupado === 'geometria'"
+        @salvar-geometria="aoSalvarGeometria"
       />
 
       <template #rodape>

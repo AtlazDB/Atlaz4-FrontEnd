@@ -6,19 +6,19 @@ export const TIPOS_ERRO = {
     familia: 'Geometria',
     nome: 'Geometria nula',
     explica: 'O registro chegou sem geometria, e ela é obrigatória.',
-    como: 'Confira o arquivo de origem: o contorno pode ter se perdido na exportação.',
+    como: 'Desenhe o contorno no mapa ("Desenhar nova"), salve e revalide. Ou confira o arquivo de origem: o contorno pode ter se perdido na exportação.',
   },
   GEOMETRIA_MALFORMADA: {
     familia: 'Geometria',
     nome: 'Geometria malformada',
     explica: 'A geometria não pôde ser lida, então não dá para desenhá-la nem calcular área.',
-    como: 'Corrija as coordenadas na origem e envie o arquivo de novo.',
+    como: 'Desenhe o contorno no mapa ("Desenhar nova"), salve e revalide. Ou corrija as coordenadas na origem e envie o arquivo de novo.',
   },
   GEOMETRIA_INVALIDA: {
     familia: 'Geometria',
     nome: 'Geometria inválida',
     explica: 'O contorno cruza a si mesmo ou não fecha. Sem corrigir, não dá para calcular área nem cruzar com outras camadas.',
-    como: 'Corrija o polígono na origem. O ponto do problema aparece em vermelho no mapa.',
+    como: 'Use "Corrigir automaticamente" ou edite os vértices no mapa, salve e revalide. O ponto do problema aparece em vermelho.',
   },
   GEOMETRIA_TIPO_INCOMPATIVEL: {
     familia: 'Geometria',
