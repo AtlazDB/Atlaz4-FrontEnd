@@ -22,7 +22,7 @@ import {
  * número numa auditoria.
  *
  * O imóvel e o indicador ficam na URL (?imovel=&indicador=), então o link
- * do card da Consulta territorial cai direto no número certo.
+ * do card de indicadores (Imóveis rurais) cai direto no número certo.
  */
 const route = useRoute()
 const router = useRouter()
@@ -148,14 +148,10 @@ const motivoMudanca = computed(() => {
       class="inline-flex items-center gap-1.5 text-[12px] text-slate-400 hover:text-slate-200"
     >
       <AppIcon nome="voltar" class="h-3.5 w-3.5" />
-      Voltar à Consulta territorial
+      Voltar aos imóveis rurais
     </RouterLink>
 
     <BaseCard
-      destaque
-      titulo="Rastreabilidade"
-      icone="rastro"
-      cor-icone="text-indigo-300"
       descricao="Escolha um imóvel e um indicador para ver o caminho completo do número: de quais arquivos ele saiu,
                  qual processamento passou por eles e qual regra fez a conta."
     >
@@ -193,7 +189,7 @@ const motivoMudanca = computed(() => {
 
     <!-- Estados -->
     <div v-if="!codImovel" class="glass p-8 text-center text-sm text-slate-400">
-      Informe o código de um imóvel, ou use "De onde veio este número?" no card da Consulta territorial.
+      Informe o código de um imóvel, ou use "De onde veio este número?" no card de indicadores dos imóveis rurais.
     </div>
     <div v-else-if="carregando" class="space-y-3">
       <div v-for="n in 2" :key="n" class="h-40 animate-pulse rounded-2xl bg-slate-800/30" />

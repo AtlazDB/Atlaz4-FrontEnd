@@ -23,16 +23,17 @@ defineProps({
 
 <template>
   <section class="glass p-5">
-    <header v-if="titulo || $slots.acoes" class="mb-4 flex items-start justify-between gap-4">
+    <header v-if="titulo || descricao || $slots.acoes" class="mb-4 flex items-start justify-between gap-4">
       <div class="min-w-0">
         <h2
+          v-if="titulo"
           class="flex items-center gap-2 font-display font-semibold text-white"
           :class="destaque ? 'text-lg' : 'text-sm'"
         >
           <AppIcon v-if="icone" :nome="icone" class="h-4 w-4 shrink-0" :class="corIcone" />
           {{ titulo }}
         </h2>
-        <p v-if="descricao" class="mt-1.5 text-[13px] leading-relaxed text-slate-400">
+        <p v-if="descricao" :class="titulo && 'mt-1.5'" class="text-[13px] leading-relaxed text-slate-400">
           {{ descricao }}
         </p>
       </div>
