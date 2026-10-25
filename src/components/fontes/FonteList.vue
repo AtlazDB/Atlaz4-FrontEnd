@@ -16,7 +16,9 @@ import { formatarTamanho, formatarDataHora } from '@/utils/formato'
  *
  * Fonte por link (modalidade LINK) ganha a etiqueta "link" e o botão
  * "Executar", que pede a coleta agora. Quem faz a coleta é a
- * ImportacaoView; aqui só se avisa com o evento 'executar'.
+ * ImportacaoView; aqui só se avisa com o evento 'executar'. Enquanto a coleta
+ * roda no Airflow (fonte.coletando), o botão gira e a linha mostra o
+ * andamento; depois, o resultado da última coleta.
  */
 defineProps({
   fontes: { type: Array, required: true },
@@ -112,6 +114,17 @@ defineEmits(['selecionar', 'mapear', 'executar', 'tentar-novamente'])
           </span>
         </div>
 
+        <p
+          v-if="fonte.modalidade === 'LINK' && fonte.ultimaColetaMensagem"
+          :class="[
+            'mt-2 text-[11px] leading-snug',
+            fonte.coletando ? 'text-cyan-300' : /falhou/i.test(fonte.ultimaColetaMensagem) ? 'text-red-300' : 'text-slate-500',
+          ]"
+          :title="fonte.ultimaColetaEm ? `Coleta terminada em ${formatarDataHora(fonte.ultimaColetaEm)}` : ''"
+        >
+          {{ fonte.ultimaColetaMensagem }}
+        </p>
+
         <div
           v-if="fonte.arquivos?.length"
           class="mt-2.5 pt-2.5 border-t border-slate-800/80 flex items-center gap-2 text-[11px]"
@@ -129,22 +142,22 @@ defineEmits(['selecionar', 'mapear', 'executar', 'tentar-novamente'])
       <button
         v-if="fonte.modalidade === 'LINK'"
         type="button"
-        :disabled="executandoId !== null"
+        :disabled="executandoId !== null || fonte.coletando"
         :class="[
           'w-10 shrink-0 grid place-items-center rounded-xl border transition',
-          executandoId === fonte.id
+          executandoId === fonte.id || fonte.coletando
             ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300'
             : 'border-slate-800 bg-slate-950/40 text-slate-500 hover:border-cyan-500/40 hover:text-cyan-300',
           executandoId !== null && executandoId !== fonte.id ? 'opacity-40' : '',
         ]"
-        :title="executandoId === fonte.id ? 'Coletando…' : 'Executar agora: coletar o link'"
+        :title="executandoId === fonte.id || fonte.coletando ? 'Coletando…' : 'Executar agora: coletar o link'"
         :aria-label="`Executar a coleta de ${fonte.sigla}`"
         @click="$emit('executar', fonte)"
       >
         <AppIcon
-          :nome="executandoId === fonte.id ? 'atualizar' : 'executar'"
+          :nome="executandoId === fonte.id || fonte.coletando ? 'atualizar' : 'executar'"
           traco="2.2"
-          :class="['h-4 w-4', executandoId === fonte.id ? 'animate-spin' : '']"
+          :class="['h-4 w-4', executandoId === fonte.id || fonte.coletando ? 'animate-spin' : '']"
         />
       </button>
       <button

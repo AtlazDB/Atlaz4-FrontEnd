@@ -17,7 +17,7 @@ import {
   executarColeta,
 } from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
-import { ehProcessavel } from '@/utils/processamento'
+import { processaAoReceber } from '@/utils/processamento'
 import { formatarNumero } from '@/utils/formato'
 
 /**
@@ -174,10 +174,17 @@ function limparTeste() {
 }
 
 /**
- * "Executar agora" de uma fonte por link: o back baixa o link para a zona
- * bruta. Daí em diante o arquivo segue igual a um upload, inclusive o
- * processamento automático (ver enviar()). Se o conteúdo for igual ao da
- * última coleta, nada é gravado e o aviso diz "sem mudança".
+ * "Executar agora" de uma fonte por link.
+ *
+ * Com o Airflow ligado, o back só põe o pedido na fila (SOLICITADA, 202): a
+ * coleta pagina o serviço e pode levar horas. A fonte fica "coletando" e a
+ * consulta periódica mostra o andamento (fonte.ultimaColetaMensagem); quando
+ * o arquivo chega na zona bruta, o próprio Airflow o processa.
+ *
+ * Sem o Airflow, o back baixa o link na hora. Daí em diante o arquivo segue
+ * igual a um upload, inclusive o processamento automático (ver enviar()). Se
+ * o conteúdo for igual ao da última coleta, nada é gravado e o aviso diz
+ * "sem mudança".
  */
 async function executar(fonte) {
   executandoId.value = fonte.id
@@ -186,7 +193,7 @@ async function executar(fonte) {
     avisar('ok', resultado === 'SEM_MUDANCA' ? `Sem mudança: ${mensagem}` : mensagem)
     selecionada.value = fonte // mostra os arquivos da fonte que acabou de ser coletada
     await atualizar()
-    if (resultado === 'RECEBIDO' && ehProcessavel(fonte, arquivo)) processar(arquivo)
+    if (resultado === 'RECEBIDO' && processaAoReceber(fonte, arquivo)) processar(arquivo)
   } catch (e) {
     avisar('erro', e.message)
   } finally {
@@ -242,7 +249,7 @@ async function enviar(arquivo) {
 
     // Sem await de propósito: o aviso acima aparece na hora e o
     // processamento segue em segundo plano (ver processar()).
-    if (ehProcessavel(fonte, recebido)) processar(recebido)
+    if (processaAoReceber(fonte, recebido)) processar(recebido)
   } catch (e) {
     avisar('erro', e.message)
   } finally {
@@ -359,8 +366,8 @@ function acompanharFilaAirflow() {
 }
 
 /**
- * Consulta periódica: enquanto houver arquivo PROCESSANDO, recarrega a
- * lista a cada 3 s. Conta também os ids que esta tela acabou de mandar
+ * Consulta periódica: enquanto houver arquivo PROCESSANDO ou fonte coletando
+ * no Airflow, recarrega a lista a cada 3 s. Conta também os ids que esta tela acabou de mandar
  * processar — a primeira consulta pode chegar antes de o back-end gravar
  * PROCESSANDO, e a consulta pararia cedo demais.
  *
@@ -371,6 +378,7 @@ const haProcessando = computed(
   () =>
     emProcessamento.value.length > 0 ||
     Object.keys(naFilaAirflow.value).length > 0 ||
+    fontes.value.some((f) => f.coletando) ||
     fontes.value.some((f) => f.arquivos?.some((a) => a.status === 'PROCESSANDO')),
 )
 
