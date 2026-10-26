@@ -8,7 +8,9 @@ import RastreabilidadeView from '@/views/RastreabilidadeView.vue'
 const routes = [
   { path: '/', redirect: { name: 'importacao' } },
   {
-    path: '/importacao',
+    // Sem fonteId: a lista de fontes. Com fonteId: a página da fonte (mesma view,
+    // para o menu continuar marcando "Fontes de dados"). ?aba=arquivos|mapeamento
+    path: '/importacao/:fonteId(\\d+)?',
     name: 'importacao',
     component: ImportacaoView,
     meta: { grupo: 'Dados', titulo: 'Fontes de dados' },
