@@ -9,9 +9,15 @@ import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
 import ModalMapeamento from '@/components/mapeamento/ModalMapeamento.vue'
 import { listarColunas } from '@/services/mapeamentosService'
-import { listarFontes, criarFonte, enviarArquivo } from '@/services/fontesService'
+import {
+  listarFontes,
+  criarFonte,
+  enviarArquivo,
+  testarLink,
+  executarColeta,
+} from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
-import { ehProcessavel } from '@/utils/processamento'
+import { processaAoReceber } from '@/utils/processamento'
 import { formatarNumero } from '@/utils/formato'
 
 /**
@@ -44,6 +50,12 @@ const selecionada = ref(null)
 const enviando = ref(false)
 const progresso = ref(0)
 const uploadRef = ref(null)
+
+// Fonte por link: o "Testar link" do formulário e o "Executar" da lista
+const testando = ref(false)
+const teste = ref(null) // a resposta do último "Testar link"
+const erroTeste = ref('')
+const executandoId = ref(null) // fonte com coleta em andamento
 
 // --- Estado do processamento --------------------------------------
 const emProcessamento = ref([]) // ids mandados processar que ainda não responderam
@@ -131,11 +143,61 @@ async function salvarFonte(dados) {
     fontes.value.unshift(nova)
     mostrandoForm.value = false
     formRef.value.limpar()
+    limparTeste()
     avisar('ok', 'Fonte cadastrada.')
   } catch (e) {
     avisar('erro', e.message)
   } finally {
     salvando.value = false
+  }
+}
+
+/**
+ * "Testar link" do formulário: o back pede ao link uma amostra pequena e
+ * devolve o status, o total, as colunas e os avisos. Nada é gravado.
+ */
+async function testarLinkDoFormulario(dados) {
+  testando.value = true
+  limparTeste()
+  try {
+    teste.value = await testarLink(dados)
+  } catch (e) {
+    erroTeste.value = e.message
+  } finally {
+    testando.value = false
+  }
+}
+
+function limparTeste() {
+  teste.value = null
+  erroTeste.value = ''
+}
+
+/**
+ * "Executar agora" de uma fonte por link.
+ *
+ * Com o Airflow ligado, o back só põe o pedido na fila (SOLICITADA, 202): a
+ * coleta pagina o serviço e pode levar horas. A fonte fica "coletando" e a
+ * consulta periódica mostra o andamento (fonte.ultimaColetaMensagem); quando
+ * o arquivo chega na zona bruta, o próprio Airflow o processa.
+ *
+ * Sem o Airflow, o back baixa o link na hora. Daí em diante o arquivo segue
+ * igual a um upload, inclusive o processamento automático (ver enviar()). Se
+ * o conteúdo for igual ao da última coleta, nada é gravado e o aviso diz
+ * "sem mudança".
+ */
+async function executar(fonte) {
+  executandoId.value = fonte.id
+  try {
+    const { resultado, mensagem, arquivo } = await executarColeta(fonte.id)
+    avisar('ok', resultado === 'SEM_MUDANCA' ? `Sem mudança: ${mensagem}` : mensagem)
+    selecionada.value = fonte // mostra os arquivos da fonte que acabou de ser coletada
+    await atualizar()
+    if (resultado === 'RECEBIDO' && processaAoReceber(fonte, arquivo)) processar(arquivo)
+  } catch (e) {
+    avisar('erro', e.message)
+  } finally {
+    executandoId.value = null
   }
 }
 
@@ -187,7 +249,7 @@ async function enviar(arquivo) {
 
     // Sem await de propósito: o aviso acima aparece na hora e o
     // processamento segue em segundo plano (ver processar()).
-    if (ehProcessavel(fonte, recebido)) processar(recebido)
+    if (processaAoReceber(fonte, recebido)) processar(recebido)
   } catch (e) {
     avisar('erro', e.message)
   } finally {
@@ -304,8 +366,8 @@ function acompanharFilaAirflow() {
 }
 
 /**
- * Consulta periódica: enquanto houver arquivo PROCESSANDO, recarrega a
- * lista a cada 3 s. Conta também os ids que esta tela acabou de mandar
+ * Consulta periódica: enquanto houver arquivo PROCESSANDO ou fonte coletando
+ * no Airflow, recarrega a lista a cada 3 s. Conta também os ids que esta tela acabou de mandar
  * processar — a primeira consulta pode chegar antes de o back-end gravar
  * PROCESSANDO, e a consulta pararia cedo demais.
  *
@@ -316,6 +378,7 @@ const haProcessando = computed(
   () =>
     emProcessamento.value.length > 0 ||
     Object.keys(naFilaAirflow.value).length > 0 ||
+    fontes.value.some((f) => f.coletando) ||
     fontes.value.some((f) => f.arquivos?.some((a) => a.status === 'PROCESSANDO')),
 )
 
@@ -394,12 +457,9 @@ onBeforeUnmount(() => {
       <div class="lg:col-span-4">
         <BaseCard titulo="Fontes cadastradas" icone="camadas">
           <template #acoes>
-            <!-- Cadastro de fonte desabilitado por enquanto: o botão fica visível,
-                 mas não abre o formulário. Para reativar, remova o `disabled`. -->
             <BaseButton
               variante="secundario"
               tamanho="sm"
-              disabled
               @click="mostrandoForm = !mostrandoForm"
             >
               <AppIcon v-if="!mostrandoForm" nome="mais" traco="2.4" class="h-3 w-3" />
@@ -413,8 +473,10 @@ onBeforeUnmount(() => {
             :erro="erro"
             :selecionada-id="selecionada?.id ?? null"
             :novas="novasPorFonte"
+            :executando-id="executandoId"
             @selecionar="selecionar"
             @mapear="abrirMapeamento"
+            @executar="executar"
             @tentar-novamente="carregar"
           />
 
@@ -422,7 +484,12 @@ onBeforeUnmount(() => {
             <FonteForm
               ref="formRef"
               :salvando="salvando"
+              :testando="testando"
+              :teste="teste"
+              :erro-teste="erroTeste"
               @salvar="salvarFonte"
+              @testar-link="testarLinkDoFormulario"
+              @limpar-teste="limparTeste"
               @cancelar="mostrandoForm = false"
             />
           </div>
