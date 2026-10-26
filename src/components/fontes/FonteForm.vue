@@ -19,9 +19,15 @@ import { formatarNumero } from '@/utils/formato'
  * e os cabeçalhos. O botão "Testar link" segue o mesmo padrão: emite
  * 'testar-link' com os dados do formulário, e a ImportacaoView devolve o
  * resultado pela prop `teste` (ou o erro por `erroTeste`).
+ *
+ * Edição: com a prop `fonte`, o formulário abre preenchido com ela e a sigla
+ * fica travada (é a pasta dos arquivos na zona bruta). Os cabeçalhos não
+ * vêm da API (podem ter token): vazio na edição = manter os que estão gravados.
  */
 
-defineProps({
+const props = defineProps({
+  /** a fonte sendo editada; null = cadastro de fonte nova */
+  fonte: { type: Object, default: null },
   salvando: { type: Boolean, default: false },
   testando: { type: Boolean, default: false },
   /** resposta do "Testar link": { mensagem, total, limitePorPedido, colunas, avisos } */
@@ -44,10 +50,39 @@ const vazio = () => ({
   corpoRequisicao: '',
 })
 
-const form = ref(vazio())
+// A fonte que veio da API, no formato do formulário.
+function daFonte(f) {
+  return {
+    ...vazio(),
+    nome: f.nome ?? '',
+    sigla: f.sigla ?? '',
+    orgao: f.orgao ?? '',
+    formato: f.formato ?? 'CSV',
+    periodicidade: f.periodicidade ?? 'eventual',
+    modalidade: f.modalidade ?? 'MANUAL',
+    urlOrigem: f.urlOrigem ?? '',
+    metodoHttp: f.metodoHttp ?? 'GET',
+    corpoRequisicao: f.corpoRequisicao ?? '',
+  }
+}
+
+const form = ref(props.fonte ? daFonte(props.fonte) : vazio())
+const editando = computed(() => !!props.fonte)
+
+// Abriu a edição de outra fonte (ou voltou para o cadastro): recomeça o formulário.
+watch(
+  () => props.fonte,
+  (f) => (form.value = f ? daFonte(f) : vazio()),
+)
 
 const formatos = ['CSV', 'GeoJSON', 'SHP', 'XLSX', 'JSON']
-const periodicidades = ['diária', 'semanal', 'mensal', 'anual', 'eventual']
+const periodicidadesPadrao = ['diária', 'semanal', 'mensal', 'anual', 'eventual']
+// Fonte antiga gravada com outra grafia (ex.: "diaria"): o valor dela continua na lista.
+const periodicidades = computed(() =>
+  periodicidadesPadrao.includes(form.value.periodicidade)
+    ? periodicidadesPadrao
+    : [...periodicidadesPadrao, form.value.periodicidade],
+)
 
 const porLink = computed(() => form.value.modalidade === 'LINK')
 
@@ -66,6 +101,8 @@ function submeter() {
   if (!porLink.value) {
     // Fonte por upload: os campos de link não vão para o back.
     Object.assign(dados, { urlOrigem: null, metodoHttp: null, cabecalhos: null, corpoRequisicao: null })
+  } else if (editando.value && !dados.cabecalhos) {
+    dados.cabecalhos = null // mantém os gravados
   }
   emit('salvar', dados)
 }
@@ -98,9 +135,11 @@ defineExpose({ limpar })
         <input
           id="sigla"
           v-model="form.sigla"
-          class="input font-mono uppercase"
+          class="input font-mono uppercase disabled:opacity-60"
           placeholder="CAR"
           maxlength="12"
+          :disabled="editando"
+          :title="editando ? 'A sigla não muda: é a pasta dos arquivos da fonte na zona bruta.' : undefined"
           required
         />
       </div>
@@ -138,6 +177,13 @@ defineExpose({ limpar })
         </select>
       </div>
     </div>
+    <p
+      v-if="editando && fonte.modalidade === 'LINK' && !porLink"
+      class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300"
+    >
+      Ao salvar, o link é apagado e a fonte sai da coleta automática: os dados passam a chegar só
+      por envio de arquivo. Os arquivos já recebidos continuam como estão.
+    </p>
 
     <!-- Fonte por link: endereço, método e cabeçalhos -->
     <div v-if="porLink" class="space-y-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3">
@@ -214,7 +260,7 @@ defineExpose({ limpar })
             id="cabecalhos"
             v-model.trim="form.cabecalhos"
             class="input font-mono text-xs"
-            placeholder='{"Accept": "application/json"}'
+            :placeholder="editando ? 'Vazio: mantém os gravados' : '{&quot;Accept&quot;: &quot;application/json&quot;}'"
           />
         </div>
       </div>
@@ -237,7 +283,9 @@ defineExpose({ limpar })
       <BaseButton class="flex-1" type="button" variante="fantasma" @click="$emit('cancelar')">
         Cancelar
       </BaseButton>
-      <BaseButton class="flex-1" type="submit" :carregando="salvando">Cadastrar fonte</BaseButton>
+      <BaseButton class="flex-1" type="submit" :carregando="salvando">
+        {{ editando ? 'Salvar alterações' : 'Cadastrar fonte' }}
+      </BaseButton>
     </div>
   </form>
 </template>

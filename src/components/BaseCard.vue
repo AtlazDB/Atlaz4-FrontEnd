@@ -18,6 +18,8 @@ defineProps({
   destaque: { type: Boolean, default: false },
   /** Classe de cor do ícone — ciano para dados, índigo para rastreabilidade. */
   corIcone: { type: String, default: 'text-cyan-400' },
+  /** Número em cinza logo depois do título, como "Imóveis 287.389". */
+  contagem: { type: String, default: '' },
 })
 </script>
 
@@ -32,7 +34,12 @@ defineProps({
         >
           <AppIcon v-if="icone" :nome="icone" class="h-4 w-4 shrink-0" :class="corIcone" />
           {{ titulo }}
+          <span v-if="contagem" class="font-normal text-slate-500">{{ contagem }}</span>
         </h2>
+        <!-- Linha logo abaixo do título (ex.: o código do imóvel selecionado) -->
+        <div v-if="$slots.subtitulo" class="mt-1 min-w-0">
+          <slot name="subtitulo" />
+        </div>
         <p v-if="descricao" :class="titulo && 'mt-1.5'" class="text-[13px] leading-relaxed text-slate-400">
           {{ descricao }}
         </p>

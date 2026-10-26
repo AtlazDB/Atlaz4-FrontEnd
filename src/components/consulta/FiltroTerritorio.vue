@@ -29,7 +29,7 @@ function limpar() {
 
 <template>
   <div class="flex flex-wrap items-end gap-3">
-    <div class="w-full sm:w-72">
+    <div class="w-full sm:w-64">
       <label class="label" for="filtro-municipio">Município (PR)</label>
       <select
         id="filtro-municipio"
@@ -58,7 +58,7 @@ function limpar() {
       </select>
     </div>
 
-    <div class="w-full sm:w-80">
+    <div class="w-full flex-1 sm:min-w-[240px]">
       <label class="label" for="filtro-codigo">Código do imóvel</label>
       <input
         id="filtro-codigo"

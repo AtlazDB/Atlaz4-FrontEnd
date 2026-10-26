@@ -9,7 +9,8 @@ import { ehProcessavel } from '@/utils/processamento'
  *
  * Componente de apresentação, como o FonteList: não chama o service.
  * Os botões "Processar" e "Excluir" só emitem 'processar' / 'excluir' —
- * quem faz a chamada é a ImportacaoView.
+ * quem faz a chamada é a ImportacaoView. "Mapear colunas" (arquivo esperando o
+ * mapeamento) emite 'mapear', e a página da fonte abre a aba Mapeamento.
  *
  * O `status` do arquivo (RECEBIDO → AGUARDANDO_MAPEAMENTO → PROCESSANDO → PROCESSADO | REJEITADO)
  * não é o `status` da fonte (ativa | pendente | inativa). No mock o
@@ -25,7 +26,7 @@ const props = defineProps({
   excluindo: { type: Array, default: () => [] },
 })
 
-defineEmits(['processar', 'excluir'])
+defineEmits(['processar', 'excluir', 'mapear'])
 
 const etiquetas = {
   AGUARDANDO_MAPEAMENTO: {
@@ -81,6 +82,7 @@ function podeExcluir(arquivo) {
           <p class="truncate text-sm text-slate-200">{{ arquivo.nome }}</p>
           <p class="font-mono text-[11px] text-slate-500">
             {{ formatarTamanho(arquivo.tamanho) }} · {{ formatarDataHora(arquivo.enviadoEm) }}
+            <template v-if="arquivo.origem"> · {{ arquivo.origem === 'COLETA' ? 'Coleta' : 'Upload' }}</template>
           </p>
         </div>
 
@@ -94,6 +96,16 @@ function podeExcluir(arquivo) {
         >
           {{ etiquetas[statusDe(arquivo)].rotulo }}
         </span>
+
+        <BaseButton
+          v-if="statusDe(arquivo) === 'AGUARDANDO_MAPEAMENTO'"
+          variante="secundario"
+          tamanho="sm"
+          class="shrink-0"
+          @click="$emit('mapear', arquivo)"
+        >
+          Mapear colunas
+        </BaseButton>
 
         <BaseButton
           v-if="podeProcessar(arquivo)"
