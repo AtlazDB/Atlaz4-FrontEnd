@@ -1,23 +1,20 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
-// Edição de vértices e desenho (layer.pm / mapa.pm).
+// Edição de vértices (layer.pm).
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import parana from '@/assets/parana.json'
 import { useTema } from '@/composables/useTema'
 
 // Objetos do Leaflet fora de ref(): o proxy do Vue atrapalha o Leaflet.
-// geometria: como chegou; trabalho: a correção (salva, prévia, editada ou desenhada).
+// geometria: como chegou; trabalho: a correção (salva, prévia, editada ou colada em GeoJSON).
 const props = defineProps({
   geometria: { type: Object, default: null },
   ponto: { type: Array, default: null },
   trabalho: { type: Object, default: null },
   editavel: { type: Boolean, default: false },
-  desenhando: { type: Boolean, default: false },
 })
-
-const emit = defineEmits(['desenhada'])
 
 const ESTILO_CORRECAO = { color: '#34d399', weight: 2, fillColor: '#34d399', fillOpacity: 0.25 }
 
@@ -86,15 +83,6 @@ function alternarEdicao() {
   camadaTrabalho?.eachLayer((l) => (props.editavel ? l.pm.enable({ allowSelfIntersection: true }) : l.pm.disable()))
 }
 
-function alternarDesenho() {
-  if (!mapa) return
-  if (props.desenhando) {
-    mapa.pm.enableDraw('Polygon', { pathOptions: ESTILO_CORRECAO, allowSelfIntersection: false })
-  } else {
-    mapa.pm.disableDraw()
-  }
-}
-
 // Ponto fora do PR: mostra o estado junto, para ficar claro onde ele caiu.
 function enquadrar() {
   const limites = camada.getBounds()
@@ -119,11 +107,18 @@ function lerTrabalho() {
   }
 }
 
-defineExpose({ lerTrabalho })
+/** Depois de ficar escondido (v-show), o Leaflet precisa medir o contêiner de novo. */
+function ajustar() {
+  if (!mapa) return
+  mapa.invalidateSize()
+  enquadrar()
+}
+
+defineExpose({ lerTrabalho, ajustar })
 
 onMounted(() => {
   mapa = L.map(container.value, { zoomControl: false, attributionControl: false })
-  mapa.pm.setLang('pt_br') // dicas do desenho ("Clique no primeiro marcador…") em português
+  mapa.pm.setLang('pt_br') // dicas da edição de vértices em português
   fundo = L.tileLayer(fundoEsri(), { maxZoom: 16 }).addTo(mapa)
   const contorno = L.geoJSON(parana, {
     interactive: false,
@@ -132,19 +127,11 @@ onMounted(() => {
   }).addTo(mapa)
   limitesParana = contorno.getBounds()
   mapa.fitBounds(limitesParana)
-  // O polígono desenhado sobe para quem controla a correção, que o devolve em "trabalho".
-  mapa.on('pm:create', ({ layer }) => {
-    const geometria = layer.toGeoJSON().geometry
-    layer.remove()
-    emit('desenhada', geometria)
-  })
   desenhar()
-  alternarDesenho()
 })
 
 watch(() => [props.geometria, props.ponto, props.trabalho], desenhar)
 watch(() => props.editavel, alternarEdicao)
-watch(() => props.desenhando, alternarDesenho)
 watch(claro, () => fundo?.setUrl(fundoEsri()))
 
 onBeforeUnmount(() => {

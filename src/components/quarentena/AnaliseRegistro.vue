@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import MapaGeometria from '@/components/quarentena/MapaGeometria.vue'
+import GeoJsonGeometria from '@/components/quarentena/GeoJsonGeometria.vue'
 import { sugerirCorrecaoGeometria } from '@/services/quarentenaService'
 import { formatarDataHora } from '@/utils/formato'
 import {
@@ -31,10 +32,13 @@ const justificativa = defineModel('justificativa', { type: String, default: '' }
 
 const editando = ref(false)
 
-// Correção da geometria: manual (vértices / desenho) ou automática (prévia do RECTIFY).
+// Correção da geometria: manual (vértices no mapa ou GeoJSON em texto) ou automática
+// (prévia do RECTIFY). Sempre parte do que chegou: não há desenho do zero, para a
+// correção nunca inventar um contorno que não veio da fonte.
 const mapa = ref(null)
 const trabalho = ref(null) // a correção mostrada em verde
-const modoGeometria = ref('ver') // ver | editar | desenhar
+const modoGeometria = ref('ver') // ver | editar
+const visao = ref('mapa') // mapa | geojson
 const geometriaPendente = ref(false) // o verde mudou e ainda não foi salvo
 const mensagemGeometria = ref(null) // { texto, erro }
 const sugerindo = ref(false)
@@ -67,16 +71,25 @@ function alternarEdicaoGeometria() {
   }
 }
 
-function desenharGeometria() {
-  modoGeometria.value = 'desenhar'
-  geometriaPendente.value = true // deixa o "Desfazer" à mão para cancelar o desenho
-  mensagemGeometria.value = { texto: 'Clique no mapa para marcar os vértices e no primeiro para fechar o polígono.' }
+// Ir para o texto no meio da edição de vértices conclui a edição, para o texto mostrar o que está no mapa.
+async function trocarVisao(nova) {
+  if (nova === visao.value) return
+  if (nova === 'geojson' && modoGeometria.value === 'editar') {
+    trabalho.value = mapa.value.lerTrabalho()
+    modoGeometria.value = 'ver'
+  }
+  visao.value = nova
+  if (nova === 'mapa') {
+    await nextTick()
+    mapa.value?.ajustar() // escondido, o Leaflet perde o tamanho do contêiner
+  }
 }
 
-function aoDesenhar(geometria) {
+function aplicarGeoJson(geometria) {
   trabalho.value = geometria
-  modoGeometria.value = 'ver'
-  mensagemGeometria.value = { texto: 'Polígono desenhado. Confira e clique em "Salvar geometria".' }
+  geometriaPendente.value = true
+  mensagemGeometria.value = { texto: 'GeoJSON aplicado em verde. Confira no mapa e clique em "Salvar geometria".' }
+  trocarVisao('mapa')
 }
 
 // Só mostra a prévia; grava quando o operador salvar.
@@ -101,7 +114,7 @@ function desfazerGeometria() {
 function salvarGeometria() {
   const geometria = modoGeometria.value === 'editar' ? mapa.value.lerTrabalho() : trabalho.value
   if (!geometria) {
-    mensagemGeometria.value = { texto: 'Nada para salvar: termine o desenho (clique no primeiro vértice).', erro: true }
+    mensagemGeometria.value = { texto: 'Nada para salvar: aplique uma correção antes.', erro: true }
     return
   }
   // Guarda o que está no mapa: se o Oracle recusar, a edição continua de onde parou.
@@ -202,32 +215,46 @@ function abrirEditor() {
       </div>
 
       <section class="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-        <p class="text-[12.5px] font-semibold text-slate-200">Geometria</p>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="text-[12.5px] font-semibold text-slate-200">Geometria</p>
+          <div
+            v-if="!carregandoGeometria && (geometria || trabalho || !encerrado)"
+            class="inline-flex rounded-lg border border-slate-800 bg-slate-950/40 p-0.5"
+            role="tablist"
+          >
+            <button
+              v-for="v in [{ id: 'mapa', rotulo: 'Mapa' }, { id: 'geojson', rotulo: 'GeoJSON' }]"
+              :key="v.id"
+              type="button"
+              role="tab"
+              :aria-selected="visao === v.id"
+              :class="[
+                'rounded-md px-2.5 py-1 text-[11px] font-medium transition',
+                visao === v.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200',
+              ]"
+              @click="trocarVisao(v.id)"
+            >
+              {{ v.rotulo }}
+            </button>
+          </div>
+        </div>
         <div
           v-if="carregandoGeometria"
           class="grid h-[250px] place-items-center rounded-lg border border-slate-800 text-[12px] text-slate-500"
         >
           Carregando a geometria…
         </div>
-        <!-- Sem geometria, mas em aberto: o mapa aparece para desenhar uma -->
+        <!-- Sem geometria legível, mas em aberto: a correção pode vir do GeoJSON em texto -->
         <template v-else-if="geometria || trabalho || !encerrado">
           <div v-if="!encerrado" class="flex flex-wrap gap-1.5">
             <button
-              v-if="geometria || trabalho"
+              v-if="(geometria || trabalho) && visao === 'mapa'"
               type="button"
               class="botao-geometria"
-              :disabled="salvandoGeometria || sugerindo || modoGeometria === 'desenhar'"
+              :disabled="salvandoGeometria || sugerindo"
               @click="alternarEdicaoGeometria"
             >
               {{ modoGeometria === 'editar' ? 'Concluir edição' : 'Editar vértices' }}
-            </button>
-            <button
-              type="button"
-              class="botao-geometria"
-              :disabled="salvandoGeometria || sugerindo || modoGeometria !== 'ver'"
-              @click="desenharGeometria"
-            >
-              Desenhar nova
             </button>
             <button
               v-if="geometria"
@@ -253,16 +280,24 @@ function abrirEditor() {
               </button>
             </template>
           </div>
+          <!-- v-show, não v-if: o mapa (e a edição de vértices) continua vivo enquanto o texto aparece -->
           <MapaGeometria
+            v-show="visao === 'mapa'"
             ref="mapa"
             :geometria="geometria"
             :ponto="ponto"
             :trabalho="trabalho"
             :editavel="modoGeometria === 'editar'"
-            :desenhando="modoGeometria === 'desenhar'"
-            @desenhada="aoDesenhar"
           />
-          <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+          <GeoJsonGeometria
+            v-if="visao === 'geojson'"
+            :original="geometria"
+            :trabalho="trabalho"
+            :valor-recebido="registro.valorRecebido || ''"
+            :editavel="!encerrado && !salvandoGeometria"
+            @aplicar="aplicarGeoJson"
+          />
+          <p v-if="visao === 'mapa'" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
             <span v-if="ponto" class="flex items-center gap-1.5">
               <span class="inline-block h-2.5 w-2.5 rounded-full bg-rose-500" />
               Ponto onde está o problema
@@ -277,7 +312,10 @@ function abrirEditor() {
               </span>
             </template>
             <template v-else-if="geometria && !ponto">Como chegou no arquivo, sem nenhuma correção.</template>
-            <template v-else-if="!geometria">Sem geometria no arquivo: use "Desenhar nova".</template>
+            <template v-else-if="!geometria">
+              Sem geometria legível no arquivo: corrija pelo GeoJSON, a partir do valor recebido, ou descarte com
+              justificativa.
+            </template>
           </p>
           <p
             v-if="mensagemGeometria"

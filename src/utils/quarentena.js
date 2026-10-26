@@ -6,19 +6,19 @@ export const TIPOS_ERRO = {
     familia: 'Geometria',
     nome: 'Geometria nula',
     explica: 'O registro chegou sem geometria, e ela é obrigatória.',
-    como: 'Desenhe o contorno no mapa ("Desenhar nova"), salve e revalide. Ou confira o arquivo de origem: o contorno pode ter se perdido na exportação.',
+    como: 'Confira o arquivo de origem: o contorno pode ter se perdido na exportação. Corrija na fonte e envie de novo, ou descarte com justificativa.',
   },
   GEOMETRIA_MALFORMADA: {
     familia: 'Geometria',
     nome: 'Geometria malformada',
     explica: 'A geometria não pôde ser lida, então não dá para desenhá-la nem calcular área.',
-    como: 'Desenhe o contorno no mapa ("Desenhar nova"), salve e revalide. Ou corrija as coordenadas na origem e envie o arquivo de novo.',
+    como: 'Abra o GeoJSON, corrija as coordenadas a partir do valor recebido, aplique no mapa, salve e revalide. Ou corrija na origem e envie o arquivo de novo.',
   },
   GEOMETRIA_INVALIDA: {
     familia: 'Geometria',
     nome: 'Geometria inválida',
     explica: 'O contorno cruza a si mesmo ou não fecha. Sem corrigir, não dá para calcular área nem cruzar com outras camadas.',
-    como: 'Use "Corrigir automaticamente" ou edite os vértices no mapa, salve e revalide. O ponto do problema aparece em vermelho.',
+    como: 'Use "Corrigir automaticamente", edite os vértices no mapa ou o GeoJSON, salve e revalide. O ponto do problema aparece em vermelho.',
   },
   GEOMETRIA_TIPO_INCOMPATIVEL: {
     familia: 'Geometria',
