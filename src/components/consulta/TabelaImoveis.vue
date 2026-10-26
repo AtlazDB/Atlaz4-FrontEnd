@@ -60,12 +60,12 @@ const ultimo = computed(() => Math.min(props.pagina * props.tamanho, props.total
   <div v-else :class="['transition-opacity', carregando && 'opacity-50']">
     <div class="max-h-[440px] overflow-auto rounded-xl border border-slate-800">
       <table class="w-full text-left text-sm">
-        <thead class="sticky top-0 bg-slate-900 text-[11px] uppercase tracking-wide text-slate-500">
+        <thead class="sticky top-0 bg-slate-900 text-[10.5px] uppercase tracking-wider text-slate-500">
           <tr>
-            <th class="px-3 py-2.5 font-medium">Código do imóvel</th>
-            <th class="px-3 py-2.5 font-medium">Município</th>
-            <th class="px-3 py-2.5 font-medium">Situação</th>
-            <th class="px-3 py-2.5 text-right font-medium">Área</th>
+            <th class="px-3 py-2.5 font-semibold">Código</th>
+            <th class="px-3 py-2.5 font-semibold">Município</th>
+            <th class="px-3 py-2.5 font-semibold">Situação</th>
+            <th class="px-3 py-2.5 text-right font-semibold">Área</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-800/80">

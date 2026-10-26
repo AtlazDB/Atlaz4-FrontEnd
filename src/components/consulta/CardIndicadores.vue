@@ -93,9 +93,8 @@ function rastreio(indicador) {
     </BaseButton>
   </div>
 
+  <!-- O código do imóvel aparece no cabeçalho do card (ConsultaView) -->
   <div v-else class="space-y-3">
-    <p class="truncate font-mono text-[11.5px] text-cyan-400">{{ codImovel }}</p>
-
     <!-- IRL -->
     <section class="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
       <div class="flex items-start justify-between gap-2">

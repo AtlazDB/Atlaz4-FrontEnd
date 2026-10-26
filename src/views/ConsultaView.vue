@@ -13,6 +13,7 @@ import {
 import { listarMunicipios, buscarMunicipio } from '@/services/municipiosService'
 import { buscarFocosNoMapa } from '@/services/focosService'
 import { buscarIndicadores, calcularIndicadores } from '@/services/indicadoresService'
+import { formatarNumero } from '@/utils/formato'
 
 /**
  * Consulta do Analista (Imóveis rurais no menu): imóveis rurais no mapa e numa tabela.
@@ -73,6 +74,13 @@ let esperaBusca = null // setTimeout da busca por código
 const nomeMunicipio = computed(
   () => municipios.value.find((m) => m.codIbge === codIbge.value)?.nome ?? '',
 )
+
+/** Legenda do mapa: diz exatamente quais focos estão desenhados (os que o IFC conta). */
+const legendaFocos = computed(() => {
+  const f = focos.value
+  if (!f?.satelite) return 'Foco de calor (INPE)'
+  return `Foco de calor · INPE ${f.satelite} · ${f.janelaMeses} meses`
+})
 
 // Vai o nome do IBGE como está ("Maringá"): o back-end compara por igualdade,
 // sem diferenciar acento nem maiúsculas, com o "Maringa" que o CAR grava.
@@ -315,10 +323,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-5">
-    <BaseCard
-      descricao="Filtre por município, situação no CAR ou código do imóvel. Aproxime o zoom no mapa para ver os
-                 perímetros, e clique numa linha da tabela para localizar o imóvel."
-    >
+    <BaseCard>
       <FiltroTerritorio
         v-model:cod-ibge="codIbge"
         v-model:cod-imovel="codImovel"
@@ -329,8 +334,20 @@ onBeforeUnmount(() => {
       />
     </BaseCard>
 
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
-      <BaseCard class="lg:col-span-7" titulo="Mapa" icone="mapa">
+    <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
+      <BaseCard class="lg:col-span-7" titulo="Mapa">
+        <template #acoes>
+          <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 pt-0.5 text-[11px] text-slate-400">
+            <span class="flex items-center gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-sm border border-cyan-400 bg-cyan-400/30" />
+              Imóvel rural
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-full bg-orange-500" />
+              {{ legendaFocos }}
+            </span>
+          </div>
+        </template>
         <MapaImoveis
           ref="mapaRef"
           :camada="camada"
@@ -346,7 +363,7 @@ onBeforeUnmount(() => {
       </BaseCard>
 
       <div class="space-y-5 lg:col-span-5">
-        <BaseCard titulo="Imóveis" icone="tabela">
+        <BaseCard titulo="Imóveis" :contagem="total ? formatarNumero(total) : ''">
           <TabelaImoveis
             :itens="itens"
             :total="total"
@@ -361,7 +378,10 @@ onBeforeUnmount(() => {
           />
         </BaseCard>
 
-        <BaseCard titulo="Indicadores do imóvel" icone="rastro">
+        <BaseCard titulo="Indicadores do imóvel">
+          <template v-if="selecionadoCod" #subtitulo>
+            <p class="truncate font-mono text-[11.5px] text-cyan-400">{{ selecionadoCod }}</p>
+          </template>
           <CardIndicadores
             :cod-imovel="selecionadoCod"
             :indicadores="indicadores"
