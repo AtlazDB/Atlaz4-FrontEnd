@@ -50,10 +50,17 @@ const KPIS = [
   { status: '', rotulo: 'Total retido', campo: 'total', cor: 'text-white' },
   { status: 'PENDENTE', rotulo: 'Pendentes', campo: 'pendentes', cor: 'text-amber-300' },
   { status: 'EM_ANALISE', rotulo: 'Em análise', campo: 'emAnalise', cor: 'text-cyan-300' },
-  { status: 'CORRIGIDO', rotulo: 'Corrigidos', campo: 'corrigidos', cor: 'text-indigo-300' },
-  { status: 'REVALIDADO', rotulo: 'Revalidados', campo: 'revalidados', cor: 'text-emerald-300' },
+  { status: 'CORRIGIDO', rotulo: 'Corrigidos', campo: 'corrigidos', cor: 'text-emerald-300' },
   { status: 'DESCARTADO', rotulo: 'Descartados', campo: 'descartados', cor: 'text-slate-300' },
 ]
+
+// O "Total retido" é a soma dos cards ao lado, como no protótipo. O `total` da
+// API conta também os revalidados e os substituídos, que não têm card.
+const valoresKpi = computed(() => {
+  const m = metricas.value
+  const total = KPIS.filter((k) => k.status).reduce((soma, k) => soma + (m[k.campo] ?? 0), 0)
+  return { ...m, total }
+})
 
 const tiposPorFamilia = computed(() =>
   FAMILIAS.map((familia) => ({
@@ -277,16 +284,20 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-5">
-    <BaseCard
-      descricao="Registros que não cumpriram alguma regra do mapeamento. O dado original na zona bruta nunca é alterado: a correção é guardada à parte e validada de novo antes de ir para a zona tratada."
-    >
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <BaseCard>
+      <p class="mb-4 max-w-3xl text-[13px] leading-relaxed text-slate-400">
+        Registros que não cumpriram alguma regra do mapeamento. O dado original na zona bruta
+        <b class="font-semibold text-slate-200">nunca é alterado</b>: a correção é guardada à parte e
+        validada de novo antes de ir para a zona tratada.
+      </p>
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
         <button
-          v-for="k in KPIS"
+          v-for="(k, i) in KPIS"
           :key="k.rotulo"
           type="button"
           :class="[
             'rounded-xl border p-3.5 text-left transition',
+            i === 0 && 'col-span-2 md:col-span-1',
             filtros.status === k.status && (k.status || !temFiltro)
               ? 'border-cyan-500/50 bg-cyan-500/10'
               : 'border-slate-800 bg-slate-950/40 hover:border-slate-600',
@@ -295,7 +306,7 @@ onBeforeUnmount(() => {
         >
           <p class="text-[11px] text-slate-400">{{ k.rotulo }}</p>
           <p :class="['mt-1 font-display text-2xl font-semibold tabular-nums', k.cor]">
-            {{ formatarNumero(metricas[k.campo] ?? 0) }}
+            {{ formatarNumero(valoresKpi[k.campo] ?? 0) }}
           </p>
         </button>
       </div>
