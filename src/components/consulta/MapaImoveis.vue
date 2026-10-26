@@ -77,13 +77,6 @@ let referencia = null
 let mascara = null
 let contornoEstado = null
 
-/** Legenda: diz exatamente quais focos estão desenhados (os que o IFC conta). */
-const legendaFocos = computed(() => {
-  const f = props.focos
-  if (!f?.satelite) return 'Foco de calor (INPE)'
-  return `Foco de calor · INPE ${f.satelite} · ${f.janelaMeses} meses`
-})
-
 const mensagem = computed(() => {
   if (!perto.value) return { tipo: 'info', texto: 'Aproxime o zoom para ver os imóveis' }
   if (props.erro) return { tipo: 'erro', texto: props.erro }
@@ -314,7 +307,7 @@ defineExpose({ enquadrar })
   <div class="relative">
     <div
       ref="container"
-      class="isolate h-[480px] w-full overflow-hidden rounded-xl border border-slate-800"
+      class="isolate h-[520px] w-full overflow-hidden rounded-xl border border-slate-800"
     />
 
     <div
@@ -328,20 +321,6 @@ defineExpose({ enquadrar })
         ]"
       >
         {{ mensagem.texto }}
-      </span>
-    </div>
-
-    <div
-      class="pointer-events-none absolute bottom-6 left-3 z-10 flex flex-col gap-1 rounded-lg border border-slate-700
-             bg-slate-950/85 px-2.5 py-1.5 text-[11px] text-slate-300 backdrop-blur"
-    >
-      <span class="flex items-center gap-1.5">
-        <span class="h-2.5 w-2.5 rounded-sm border border-cyan-400 bg-cyan-400/30" />
-        Imóvel rural
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="h-2.5 w-2.5 rounded-full bg-orange-500" />
-        {{ legendaFocos }}
       </span>
     </div>
   </div>
