@@ -1,30 +1,36 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ImportacaoView from '@/views/ImportacaoView.vue'
 import ConsultaView from '@/views/ConsultaView.vue'
+import QuarentenaView from '@/views/QuarentenaView.vue'
+import RastreabilidadeView from '@/views/RastreabilidadeView.vue'
 
-/**
- * Uma rota por etapa do fluxo de dados. A trilha do topo (EtapasNav) lê a
- * lista de etapas em src/router/etapas.js e liga cada uma ao `name` daqui.
- *
- * As telas de Validação e Padronização entram como novas rotas conforme
- * forem construídas — e o `rota: null` correspondente em etapas.js passa a
- * apontar para elas.
- *
- * `meta.etapas` diz se a trilha aparece: ela é do fluxo do Operador de
- * Dados, e não faz sentido na consulta do Analista.
- */
+// meta.grupo e meta.titulo aparecem no topo (AppTopo).
 const routes = [
   { path: '/', redirect: { name: 'importacao' } },
   {
     path: '/importacao',
     name: 'importacao',
     component: ImportacaoView,
-    meta: { etapas: true },
+    meta: { grupo: 'Dados', titulo: 'Fontes de dados' },
   },
   {
     path: '/consulta',
     name: 'consulta',
     component: ConsultaView,
+    meta: { grupo: 'Consulta', titulo: 'Imóveis rurais · Paraná' },
+  },
+  {
+    path: '/quarentena',
+    name: 'quarentena',
+    component: QuarentenaView,
+    meta: { grupo: 'Dados', titulo: 'Quarentena' },
+  },
+  {
+    // ?imovel=<cod_imovel>&indicador=IRL|IFC
+    path: '/rastreabilidade',
+    name: 'rastreabilidade',
+    component: RastreabilidadeView,
+    meta: { grupo: 'Governança', titulo: 'Rastreabilidade' },
   },
   // Qualquer endereço desconhecido volta para o começo do fluxo.
   { path: '/:caminho(.*)*', redirect: { name: 'importacao' } },
