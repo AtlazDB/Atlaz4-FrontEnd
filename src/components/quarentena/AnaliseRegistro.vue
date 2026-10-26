@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import MapaGeometria from '@/components/quarentena/MapaGeometria.vue'
+import { sugerirCorrecaoGeometria } from '@/services/quarentenaService'
 import { formatarDataHora } from '@/utils/formato'
 import {
   TIPOS_ERRO,
@@ -16,14 +17,99 @@ import {
 const props = defineProps({
   registro: { type: Object, required: true },
   geometria: { type: Object, default: null },
+  geometriaCorrigida: { type: Object, default: null },
   carregandoGeometria: { type: Boolean, default: false },
   revalidacao: { type: Object, default: null },
+  salvandoGeometria: { type: Boolean, default: false },
 })
+
+// Salvar a geometria é com a view, como as outras ações que gravam.
+const emit = defineEmits(['salvar-geometria'])
 
 const payload = defineModel('payload', { type: String, default: '' })
 const justificativa = defineModel('justificativa', { type: String, default: '' })
 
 const editando = ref(false)
+
+// Correção da geometria: manual (vértices / desenho) ou automática (prévia do RECTIFY).
+const mapa = ref(null)
+const trabalho = ref(null) // a correção mostrada em verde
+const modoGeometria = ref('ver') // ver | editar | desenhar
+const geometriaPendente = ref(false) // o verde mudou e ainda não foi salvo
+const mensagemGeometria = ref(null) // { texto, erro }
+const sugerindo = ref(false)
+
+function reiniciarGeometria() {
+  trabalho.value = props.geometriaCorrigida
+  modoGeometria.value = 'ver'
+  geometriaPendente.value = false
+}
+
+// Registro novo, ou a view acabou de salvar: o verde volta a ser a correção do banco.
+watch(() => [props.registro.id, props.geometriaCorrigida], () => {
+  reiniciarGeometria()
+  mensagemGeometria.value = null
+}, { immediate: true })
+
+function alternarEdicaoGeometria() {
+  if (modoGeometria.value === 'editar') {
+    trabalho.value = mapa.value.lerTrabalho()
+    modoGeometria.value = 'ver'
+    mensagemGeometria.value = { texto: 'Edição concluída. Clique em "Salvar geometria" para gravar.' }
+    return
+  }
+  // Sem correção ainda, a edição começa de uma cópia da original.
+  if (!trabalho.value) trabalho.value = props.geometria
+  modoGeometria.value = 'editar'
+  geometriaPendente.value = true
+  mensagemGeometria.value = {
+    texto: 'Arraste os vértices; clique no meio de uma aresta para criar um e com o botão direito para apagar.',
+  }
+}
+
+function desenharGeometria() {
+  modoGeometria.value = 'desenhar'
+  geometriaPendente.value = true // deixa o "Desfazer" à mão para cancelar o desenho
+  mensagemGeometria.value = { texto: 'Clique no mapa para marcar os vértices e no primeiro para fechar o polígono.' }
+}
+
+function aoDesenhar(geometria) {
+  trabalho.value = geometria
+  modoGeometria.value = 'ver'
+  mensagemGeometria.value = { texto: 'Polígono desenhado. Confira e clique em "Salvar geometria".' }
+}
+
+// Só mostra a prévia; grava quando o operador salvar.
+async function corrigirAutomaticamente() {
+  sugerindo.value = true
+  try {
+    trabalho.value = await sugerirCorrecaoGeometria(props.registro.id)
+    geometriaPendente.value = true
+    mensagemGeometria.value = { texto: 'Prévia da correção automática em verde. Ajuste os vértices se precisar e salve.' }
+  } catch (e) {
+    mensagemGeometria.value = { texto: e.message, erro: true }
+  } finally {
+    sugerindo.value = false
+  }
+}
+
+function desfazerGeometria() {
+  reiniciarGeometria()
+  mensagemGeometria.value = null
+}
+
+function salvarGeometria() {
+  const geometria = modoGeometria.value === 'editar' ? mapa.value.lerTrabalho() : trabalho.value
+  if (!geometria) {
+    mensagemGeometria.value = { texto: 'Nada para salvar: termine o desenho (clique no primeiro vértice).', erro: true }
+    return
+  }
+  // Guarda o que está no mapa: se o Oracle recusar, a edição continua de onde parou.
+  trabalho.value = geometria
+  modoGeometria.value = 'ver'
+  mensagemGeometria.value = null
+  emit('salvar-geometria', geometria)
+}
 
 function minusculaInicial(texto) {
   return texto.charAt(0).toLowerCase() + texto.slice(1)
@@ -123,14 +209,81 @@ function abrirEditor() {
         >
           Carregando a geometria…
         </div>
-        <template v-else-if="geometria">
-          <MapaGeometria :geometria="geometria" :ponto="ponto" />
-          <p class="flex items-center gap-2 text-[11px] text-slate-400">
-            <template v-if="ponto">
+        <!-- Sem geometria, mas em aberto: o mapa aparece para desenhar uma -->
+        <template v-else-if="geometria || trabalho || !encerrado">
+          <div v-if="!encerrado" class="flex flex-wrap gap-1.5">
+            <button
+              v-if="geometria || trabalho"
+              type="button"
+              class="botao-geometria"
+              :disabled="salvandoGeometria || sugerindo || modoGeometria === 'desenhar'"
+              @click="alternarEdicaoGeometria"
+            >
+              {{ modoGeometria === 'editar' ? 'Concluir edição' : 'Editar vértices' }}
+            </button>
+            <button
+              type="button"
+              class="botao-geometria"
+              :disabled="salvandoGeometria || sugerindo || modoGeometria !== 'ver'"
+              @click="desenharGeometria"
+            >
+              Desenhar nova
+            </button>
+            <button
+              v-if="geometria"
+              type="button"
+              class="botao-geometria"
+              :disabled="salvandoGeometria || sugerindo || modoGeometria !== 'ver'"
+              @click="corrigirAutomaticamente"
+            >
+              {{ sugerindo ? 'Corrigindo…' : 'Corrigir automaticamente' }}
+            </button>
+            <template v-if="geometriaPendente">
+              <button type="button" class="botao-geometria" :disabled="salvandoGeometria" @click="desfazerGeometria">
+                Desfazer
+              </button>
+              <button
+                type="button"
+                class="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition
+                       hover:bg-emerald-500 disabled:opacity-40"
+                :disabled="salvandoGeometria"
+                @click="salvarGeometria"
+              >
+                {{ salvandoGeometria ? 'Salvando…' : 'Salvar geometria' }}
+              </button>
+            </template>
+          </div>
+          <MapaGeometria
+            ref="mapa"
+            :geometria="geometria"
+            :ponto="ponto"
+            :trabalho="trabalho"
+            :editavel="modoGeometria === 'editar'"
+            :desenhando="modoGeometria === 'desenhar'"
+            @desenhada="aoDesenhar"
+          />
+          <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+            <span v-if="ponto" class="flex items-center gap-1.5">
               <span class="inline-block h-2.5 w-2.5 rounded-full bg-rose-500" />
               Ponto onde está o problema
+            </span>
+            <template v-if="trabalho">
+              <span v-if="geometria" class="flex items-center gap-1.5">
+                <span class="inline-block h-0.5 w-3 bg-cyan-400" /> Como chegou
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="inline-block h-0.5 w-3 bg-emerald-400" />
+                {{ geometriaPendente ? 'Correção não salva' : 'Correção salva' }}
+              </span>
             </template>
-            <template v-else>Como chegou no arquivo, sem nenhuma correção.</template>
+            <template v-else-if="geometria && !ponto">Como chegou no arquivo, sem nenhuma correção.</template>
+            <template v-else-if="!geometria">Sem geometria no arquivo: use "Desenhar nova".</template>
+          </p>
+          <p
+            v-if="mensagemGeometria"
+            :class="['text-[11.5px]', mensagemGeometria.erro ? 'text-rose-300' : 'text-emerald-300']"
+          >
+            {{ mensagemGeometria.texto }}
           </p>
         </template>
         <div
@@ -220,3 +373,10 @@ function abrirEditor() {
     </p>
   </div>
 </template>
+
+<style scoped>
+.botao-geometria {
+  @apply rounded-lg border border-slate-700 px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition
+    hover:border-slate-500 hover:text-slate-100 disabled:opacity-40;
+}
+</style>

@@ -31,6 +31,24 @@ export async function buscarGeometria(id) {
   return resposta.status === 204 ? null : resposta.data
 }
 
+/** A geometria salva pelo operador; null enquanto não houver correção (204). */
+export async function buscarGeometriaCorrigida(id) {
+  const resposta = await http.get(`/quarentena/${id}/geometria-corrigida`)
+  return resposta.status === 204 ? null : resposta.data
+}
+
+/** Prévia da correção automática (RECTIFY do Oracle), em GeoJSON. Não grava nada. */
+export async function sugerirCorrecaoGeometria(id) {
+  const { data } = await http.post(`/quarentena/${id}/geometria/correcao-automatica`)
+  return data
+}
+
+/** O back só aceita se o Oracle achar a geometria válida; o registro fica CORRIGIDO. */
+export async function salvarGeometriaCorrigida(id, geometria, justificativa) {
+  const { data } = await http.put(`/quarentena/${id}/geometria-corrigida`, { geometria, justificativa })
+  return data
+}
+
 export async function iniciarAnalise(id) {
   const { data } = await http.post(`/quarentena/${id}/iniciar-analise`)
   return data
