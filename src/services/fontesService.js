@@ -119,6 +119,42 @@ export async function enviarArquivo(fonteId, arquivo, aoProgredir = () => {}) {
 }
 
 /**
+ * "Testar link" do formulário: o back pede ao link uma amostra pequena e
+ * devolve o que achou, sem gravar nada.
+ *
+ *   POST /fontes/testar-link
+ *        body → { urlOrigem, metodoHttp, cabecalhos, corpoRequisicao }
+ *        200  → { tipo, statusHttp, total, limitePorPedido, colunas, avisos, mensagem }
+ *        400  → link inválido ou interno · 502 → o servidor de origem falhou
+ *
+ * @param {{urlOrigem:string, metodoHttp?:string, cabecalhos?:string, corpoRequisicao?:string}} dados
+ */
+export async function testarLink(dados) {
+  const { data } = await http.post('/fontes/testar-link', dados)
+  return data
+}
+
+/**
+ * "Executar agora" de uma fonte por link.
+ *
+ *   POST /fontes/:id/executar
+ *        202 → { resultado: 'SOLICITADA', mensagem }           (Airflow ligado: coleta na fila)
+ *        201 → { resultado: 'RECEBIDO', mensagem, arquivo }     (arquivo novo)
+ *        200 → { resultado: 'SEM_MUDANCA', mensagem, arquivo } (igual à última coleta)
+ *        400 → fonte sem link ou link inválido
+ *        502 → o servidor de origem falhou, ou cortou a resposta no limite por pedido
+ *
+ * Com o Airflow ligado, a resposta é imediata e o andamento aparece na fonte
+ * (coletando, ultimaColetaMensagem, ultimaColetaEm). Sem ele, o download
+ * acontece dentro da requisição: um arquivo grande demora, por isso o timeout
+ * é maior que o padrão do http.js (60 s), como no upload.
+ */
+export async function executarColeta(fonteId) {
+  const { data } = await http.post(`/fontes/${fonteId}/executar`, null, { timeout: 10 * 60_000 })
+  return data
+}
+
+/**
  * Já implementado como exemplo do padrão que os TODOs acima seguem.
  * Use como referência quando travar.
  */
