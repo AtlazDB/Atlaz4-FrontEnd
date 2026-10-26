@@ -1,24 +1,28 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import BaseCard from '@/components/BaseCard.vue'
+import { useRoute, useRouter } from 'vue-router'
 import BaseButton from '@/components/BaseButton.vue'
+import BaseGaveta from '@/components/BaseGaveta.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
 import FonteList from '@/components/fontes/FonteList.vue'
 import FonteForm from '@/components/fontes/FonteForm.vue'
 import FonteUpload from '@/components/fontes/FonteUpload.vue'
 import ArquivoList from '@/components/fontes/ArquivoList.vue'
-import ModalMapeamento from '@/components/mapeamento/ModalMapeamento.vue'
+import RecebimentoLink from '@/components/fontes/RecebimentoLink.vue'
+import MapeamentoPainel from '@/components/mapeamento/MapeamentoPainel.vue'
 import { listarColunas } from '@/services/mapeamentosService'
 import {
   listarFontes,
   criarFonte,
+  atualizarFonte,
   enviarArquivo,
   testarLink,
   executarColeta,
 } from '@/services/fontesService'
 import { processarArquivo, excluirArquivo } from '@/services/arquivosService'
 import { processaAoReceber } from '@/utils/processamento'
-import { formatarNumero } from '@/utils/formato'
+import { formatarNumero, formatarDataHora } from '@/utils/formato'
 
 /**
  * ==================================================================
@@ -29,11 +33,80 @@ import { formatarNumero } from '@/utils/formato'
  *
  * Ordem sugerida: faça os TODOs 1 a 6 primeiro (service, formulário e
  * upload), e só então volte aqui para ligar tudo.
+ *
+ * A tela tem duas partes, escolhidas pela rota:
+ *   /importacao            a lista de fontes em cartões, com filtro e busca
+ *   /importacao/:fonteId   a página da fonte, com as abas Recebimento,
+ *                          Arquivos recebidos e Mapeamento (?aba=...)
  */
 
+const route = useRoute()
+const router = useRouter()
+
 // --- Estado do mapeamento -----------------------------------------
-const mapeando = ref(false)
 const novasPorFonte = ref({})
+
+// --- Lista: filtro por como os dados chegam e busca --------------
+const filtro = ref('todas') // todas | LINK | MANUAL
+const busca = ref('')
+
+const filtros = [
+  { valor: 'todas', rotulo: 'Todas' },
+  { valor: 'LINK', rotulo: 'Coleta automática' },
+  { valor: 'MANUAL', rotulo: 'Upload' },
+]
+
+function doFiltro(fonte, valor) {
+  return valor === 'todas' || (valor === 'LINK') === (fonte.modalidade === 'LINK')
+}
+
+function contar(valor) {
+  return fontes.value.filter((f) => doFiltro(f, valor)).length
+}
+
+const fontesVisiveis = computed(() => {
+  const termo = busca.value.trim().toLowerCase()
+  return fontes.value.filter(
+    (f) =>
+      doFiltro(f, filtro.value) &&
+      (!termo || `${f.nome} ${f.sigla} ${f.orgao}`.toLowerCase().includes(termo)),
+  )
+})
+
+// --- Página da fonte: abas ----------------------------------------
+const ABAS = ['recebimento', 'arquivos', 'mapeamento']
+const aba = computed(() => (ABAS.includes(route.query.aba) ? route.query.aba : 'recebimento'))
+
+function irParaAba(nova) {
+  router.replace({ query: { ...route.query, aba: nova === 'recebimento' ? undefined : nova } })
+}
+
+const abas = computed(() => [
+  { id: 'recebimento', rotulo: 'Recebimento' },
+  { id: 'arquivos', rotulo: 'Arquivos recebidos', contagem: selecionada.value?.arquivos?.length ?? 0 },
+  { id: 'mapeamento', rotulo: 'Mapeamento', semRegra: novasPorFonte.value[selecionada.value?.id] ?? 0 },
+])
+
+// O que trava a fonte aberta: arquivo esperando o mapeamento. Coluna sem regra
+// sozinha não é alerta: muitas ficam sem mapeamento de propósito (objectid, Shape__Area)
+// e só ganham o ponto na aba Mapeamento.
+const alertaFonte = computed(() => {
+  const fonte = selecionada.value
+  if (!fonte?.arquivos?.some((a) => a.status === 'AGUARDANDO_MAPEAMENTO')) return null
+  return 'Há arquivo esperando o mapeamento das colunas: ele está guardado na zona bruta e é processado assim que as colunas forem mapeadas.'
+})
+
+const metaFonte = computed(() => {
+  const fonte = selecionada.value
+  if (!fonte) return []
+  const ultimo = fonte.arquivos?.[0]
+  return [
+    { rotulo: 'Como chega', valor: fonte.modalidade === 'LINK' ? 'Coleta automática por link' : 'Upload pelo operador' },
+    { rotulo: 'Formato', valor: fonte.formato },
+    { rotulo: 'Periodicidade', valor: fonte.periodicidade || '—' },
+    { rotulo: 'Último arquivo', valor: ultimo ? formatarDataHora(ultimo.enviadoEm) : 'nenhum ainda' },
+  ]
+})
 
 // --- Estado da listagem -------------------------------------------
 const fontes = ref([])
@@ -42,6 +115,7 @@ const erro = ref('')
 
 // --- Estado do formulário -----------------------------------------
 const mostrandoForm = ref(false)
+const emEdicao = ref(null) // a fonte aberta no formulário para editar, ou null
 const salvando = ref(false)
 const formRef = ref(null)
 
@@ -96,8 +170,7 @@ function recarregarNovas() {
 }
 
 function abrirMapeamento(fonte) {
-  selecionar(fonte)
-  mapeando.value = true
+  router.push({ name: 'importacao', params: { fonteId: fonte.id }, query: { aba: 'mapeamento' } })
 }
 
 /**
@@ -136,9 +209,30 @@ async function carregar() {
  *      e chame avisar('ok', 'Fonte cadastrada.')
  *   e) no catch, avisar('erro', e.message)
  */
+function editarFonte(fonte) {
+  limparTeste()
+  emEdicao.value = fonte
+  mostrandoForm.value = true
+}
+
+function fecharForm() {
+  mostrandoForm.value = false
+  emEdicao.value = null
+}
+
 async function salvarFonte(dados) {
   salvando.value = true
   try {
+    if (emEdicao.value) {
+      const atualizada = await atualizarFonte(emEdicao.value.id, dados)
+      const i = fontes.value.findIndex((f) => f.id === atualizada.id)
+      if (i !== -1) fontes.value[i] = atualizada
+      if (selecionada.value?.id === atualizada.id) selecionada.value = atualizada
+      fecharForm()
+      limparTeste()
+      avisar('ok', 'Fonte atualizada.')
+      return
+    }
     const nova = await criarFonte(dados)
     fontes.value.unshift(nova)
     mostrandoForm.value = false
@@ -171,6 +265,12 @@ async function testarLinkDoFormulario(dados) {
 function limparTeste() {
   teste.value = null
   erroTeste.value = ''
+}
+
+/** "Testar link" da página da fonte: o mesmo teste do formulário, com o link cadastrado. */
+function testarLinkDaFonte() {
+  const { urlOrigem, metodoHttp, corpoRequisicao } = selecionada.value
+  testarLinkDoFormulario({ urlOrigem, metodoHttp, corpoRequisicao })
 }
 
 /**
@@ -418,9 +518,22 @@ async function excluir(arquivo) {
 }
 
 function selecionar(fonte) {
-  selecionada.value = fonte
-  uploadRef.value?.limpar()
+  router.push({ name: 'importacao', params: { fonteId: fonte.id } })
 }
+
+// A fonte aberta vem da rota (/importacao/:fonteId): trocar de fonte, voltar
+// para a lista ou recarregar a página mantém a tela coerente com o endereço.
+watch(
+  () => [route.params.fonteId, fontes.value],
+  ([id], antes) => {
+    const anterior = antes?.[0]
+    selecionada.value = id ? (fontes.value.find((f) => String(f.id) === String(id)) ?? null) : null
+    if (id !== anterior) {
+      uploadRef.value?.limpar()
+      limparTeste()
+    }
+  },
+)
 
 onMounted(carregar)
 onBeforeUnmount(() => {
@@ -452,68 +565,172 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
-      <!-- Coluna da esquerda: as fontes de dados cadastradas -->
-      <div class="lg:col-span-4">
-        <BaseCard titulo="Fontes cadastradas" icone="camadas">
-          <template #acoes>
-            <BaseButton
-              variante="secundario"
-              tamanho="sm"
-              @click="mostrandoForm = !mostrandoForm"
-            >
-              <AppIcon v-if="!mostrandoForm" nome="mais" traco="2.4" class="h-3 w-3" />
-              {{ mostrandoForm ? 'Fechar' : 'Nova fonte' }}
-            </BaseButton>
-          </template>
-
-          <FonteList
-            :fontes="fontes"
-            :carregando="carregando"
-            :erro="erro"
-            :selecionada-id="selecionada?.id ?? null"
-            :novas="novasPorFonte"
-            :executando-id="executandoId"
-            @selecionar="selecionar"
-            @mapear="abrirMapeamento"
-            @executar="executar"
-            @tentar-novamente="carregar"
-          />
-
-          <div v-if="mostrandoForm" class="mt-4 border-t border-slate-800 pt-4">
-            <FonteForm
-              ref="formRef"
-              :salvando="salvando"
-              :testando="testando"
-              :teste="teste"
-              :erro-teste="erroTeste"
-              @salvar="salvarFonte"
-              @testar-link="testarLinkDoFormulario"
-              @limpar-teste="limparTeste"
-              @cancelar="mostrandoForm = false"
-            />
-          </div>
-        </BaseCard>
+    <!-- ============================================ LISTA DE FONTES -->
+    <template v-if="!route.params.fonteId">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <p class="max-w-3xl text-[13px] text-slate-400">
+          Cada fonte é um órgão que entrega dados ao sistema. Os dados chegam de dois jeitos: por
+          <b class="font-medium text-slate-200">upload</b>, quando o operador envia o arquivo, ou por
+          <b class="font-medium text-slate-200">coleta automática</b>, quando o sistema busca no link
+          do órgão.
+        </p>
+        <!-- As fontes do projeto já estão cadastradas: o botão fica à vista, mas inativo.
+             Para mudar como uma fonte chega (link ou upload), use "Editar" na página dela. -->
+        <span title="As fontes do projeto já estão cadastradas. Para mudar uma delas, abra a fonte e use Editar.">
+          <BaseButton tamanho="sm" disabled>
+            <AppIcon nome="mais" traco="2.4" class="h-3 w-3" />
+            Nova fonte
+          </BaseButton>
+        </span>
       </div>
 
-      <!-- Coluna da direita: a importação do arquivo -->
-      <div class="space-y-5 lg:col-span-8">
-        <BaseCard
-          destaque
-          titulo="Importar arquivo"
-          descricao="O arquivo original é preservado, sem alterações, na zona bruta do GeoDataLake —
-                     junto com um hash de integridade e o carimbo de data e hora do recebimento."
-        >
-          <FonteUpload
-            ref="uploadRef"
-            :fonte="selecionada"
-            :enviando="enviando"
-            :progresso="progresso"
-            @enviar="enviar"
-          />
-        </BaseCard>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex rounded-xl border border-slate-800 bg-slate-950/40 p-1" role="tablist">
+          <button
+            v-for="f in filtros"
+            :key="f.valor"
+            type="button"
+            role="tab"
+            :aria-selected="filtro === f.valor"
+            :class="[
+              'rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition',
+              filtro === f.valor ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200',
+            ]"
+            @click="filtro = f.valor"
+          >
+            {{ f.rotulo }} <span class="text-slate-500">{{ contar(f.valor) }}</span>
+          </button>
+        </div>
+        <input
+          v-model="busca"
+          class="input max-w-xs"
+          placeholder="Buscar por nome, sigla ou órgão"
+          aria-label="Buscar fonte"
+        />
+      </div>
 
-        <BaseCard v-if="selecionada" titulo="Arquivos recebidos" icone="arquivo">
+      <FonteList
+        :fontes="fontesVisiveis"
+        :carregando="carregando"
+        :erro="erro"
+        :novas="novasPorFonte"
+        :filtrada="fontes.length > 0"
+        @selecionar="selecionar"
+        @tentar-novamente="carregar"
+      />
+    </template>
+
+    <!-- ============================================ PÁGINA DA FONTE -->
+    <template v-else>
+      <RouterLink
+        :to="{ name: 'importacao' }"
+        class="inline-flex items-center gap-1.5 text-[12px] text-slate-400 hover:text-slate-200"
+      >
+        <AppIcon nome="voltar" class="h-3.5 w-3.5" />
+        Todas as fontes
+      </RouterLink>
+
+      <div v-if="!selecionada" class="glass p-8 text-center text-sm text-slate-400">
+        <template v-if="carregando">Carregando a fonte…</template>
+        <template v-else-if="erro">{{ erro }}</template>
+        <template v-else>Fonte não encontrada.</template>
+      </div>
+
+      <template v-else>
+        <section class="glass p-5">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-mono text-[13px] font-medium text-cyan-400">{{ selecionada.sigla }}</span>
+            <span
+              :class="[
+                'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                selecionada.modalidade === 'LINK'
+                  ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+                  : 'border-slate-600/60 bg-slate-500/10 text-slate-300',
+              ]"
+            >
+              {{ selecionada.modalidade === 'LINK' ? 'Coleta automática' : 'Upload' }}
+            </span>
+            <StatusBadge :status="selecionada.status" />
+            <span class="text-[12px] text-slate-500">· {{ selecionada.orgao }}</span>
+            <BaseButton class="ml-auto" variante="fantasma" tamanho="sm" @click="editarFonte(selecionada)">
+              <AppIcon nome="lapis" class="h-3.5 w-3.5" />
+              Editar
+            </BaseButton>
+          </div>
+          <h1 class="mt-2 font-display text-lg font-semibold text-white">{{ selecionada.nome }}</h1>
+
+          <dl class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div v-for="m in metaFonte" :key="m.rotulo">
+              <dt class="text-[11px] font-medium text-slate-500">{{ m.rotulo }}</dt>
+              <dd class="mt-0.5 text-[13px] text-slate-200">{{ m.valor }}</dd>
+            </div>
+          </dl>
+
+          <div
+            v-if="alertaFonte && aba !== 'mapeamento'"
+            class="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5"
+          >
+            <AppIcon nome="alerta" class="h-4 w-4 shrink-0 text-amber-300" />
+            <p class="flex-1 text-[13px] text-amber-100">{{ alertaFonte }}</p>
+            <BaseButton variante="fantasma" tamanho="sm" @click="irParaAba('mapeamento')">Resolver</BaseButton>
+          </div>
+        </section>
+
+        <div class="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/40 p-1" role="tablist">
+          <button
+            v-for="a in abas"
+            :key="a.id"
+            type="button"
+            role="tab"
+            :aria-selected="aba === a.id"
+            :class="[
+              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition',
+              aba === a.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200',
+            ]"
+            @click="irParaAba(a.id)"
+          >
+            {{ a.rotulo }}
+            <span v-if="a.contagem !== undefined" class="text-slate-500">{{ a.contagem }}</span>
+            <span
+              v-if="a.semRegra"
+              class="text-[11px] text-slate-500"
+              :title="`${a.semRegra} coluna(s) sem mapeamento`"
+            >· {{ a.semRegra }} sem regra</span>
+          </button>
+        </div>
+
+        <!-- Aba: Recebimento -->
+        <template v-if="aba === 'recebimento'">
+          <RecebimentoLink
+            v-if="selecionada.modalidade === 'LINK'"
+            :fonte="selecionada"
+            :executando="executandoId === selecionada.id"
+            :testando="testando"
+            :teste="teste"
+            :erro-teste="erroTeste"
+            @executar="executar(selecionada)"
+            @testar="testarLinkDaFonte"
+          />
+          <section v-else class="glass space-y-4 p-5">
+            <div>
+              <h2 class="text-sm font-semibold text-white">Enviar arquivo</h2>
+              <p class="mt-1 max-w-2xl text-[13px] text-slate-400">
+                O arquivo original é guardado sem nenhuma alteração na zona bruta, com um hash que
+                prova a integridade e o carimbo de data e hora do recebimento.
+              </p>
+            </div>
+            <FonteUpload
+              ref="uploadRef"
+              :fonte="selecionada"
+              :enviando="enviando"
+              :progresso="progresso"
+              @enviar="enviar"
+            />
+          </section>
+        </template>
+
+        <!-- Aba: Arquivos recebidos -->
+        <section v-else-if="aba === 'arquivos'" class="glass p-5">
           <ArquivoList
             :fonte="selecionada"
             :em-processamento="emProcessamento"
@@ -521,15 +738,46 @@ onBeforeUnmount(() => {
             :excluindo="excluindo"
             @processar="processar"
             @excluir="excluir"
+            @mapear="irParaAba('mapeamento')"
           />
-        </BaseCard>
-      </div>
-    </div>
-    <ModalMapeamento
-      :aberto="mapeando"
-      :fonte="selecionada"
-      @fechar="mapeando = false"
-      @alterado="selecionada && contarNovas(selecionada.id)"
-    />
+        </section>
+
+        <!-- Aba: Mapeamento -->
+        <section v-else class="glass p-5">
+          <p class="mb-4 max-w-3xl text-[13px] text-slate-400">
+            O mapeamento diz <b class="font-medium text-slate-200">de qual coluna do arquivo vem cada
+            campo</b> da zona tratada e <b class="font-medium text-slate-200">que regras ele precisa
+            cumprir</b>. É o que permite receber dados de órgãos diferentes, cada um com seu formato.
+            Registro que não cumpre uma regra vai para a quarentena.
+          </p>
+          <MapeamentoPainel
+            :fonte="selecionada"
+            :ativo="aba === 'mapeamento'"
+            @alterado="contarNovas(selecionada.id)"
+          />
+        </section>
+      </template>
+    </template>
+
+    <!-- Cadastro de fonte: gaveta lateral -->
+    <BaseGaveta
+      :aberto="mostrandoForm"
+      sobre="Fontes de dados"
+      :titulo="emEdicao ? `Editar ${emEdicao.sigla}` : 'Nova fonte de dados'"
+      @fechar="fecharForm"
+    >
+      <FonteForm
+        ref="formRef"
+        :fonte="emEdicao"
+        :salvando="salvando"
+        :testando="testando"
+        :teste="teste"
+        :erro-teste="erroTeste"
+        @salvar="salvarFonte"
+        @testar-link="testarLinkDoFormulario"
+        @limpar-teste="limparTeste"
+        @cancelar="fecharForm"
+      />
+    </BaseGaveta>
   </div>
 </template>

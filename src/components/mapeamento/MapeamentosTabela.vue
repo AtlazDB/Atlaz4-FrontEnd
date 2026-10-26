@@ -5,16 +5,18 @@ import AppIcon from '@/components/AppIcon.vue'
 /**
  * Colunas já mapeadas: de onde vem, para onde vai e quais regras valem.
  *
- * Componente de APRESENTAÇÃO: não chama a API. O botão Remover só emite
- * 'remover'; quem confirma e exclui é o ModalMapeamento.
+ * Componente de APRESENTAÇÃO: não chama a API. Os botões só emitem
+ * 'editar' e 'remover'; quem abre o formulário, confirma e exclui é o MapeamentoPainel.
  */
 defineProps({
   mapeamentos: { type: Array, required: true },
   /** ids com remoção em andamento (o botão fica em "carregando") */
   removendo: { type: Array, default: () => [] },
+  /** id do mapeamento aberto no formulário (a linha fica destacada) */
+  editandoId: { type: Number, default: null },
 })
 
-defineEmits(['remover'])
+defineEmits(['editar', 'remover'])
 
 /** As regras ligadas, em etiquetas curtas. */
 function regrasDe(m) {
@@ -43,7 +45,10 @@ function regrasDe(m) {
     <li
       v-for="m in mapeamentos"
       :key="m.id"
-      class="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+      :class="[
+        'flex items-center gap-3 py-2.5 first:pt-0 last:pb-0',
+        editandoId === m.id && '-mx-2 rounded-lg bg-cyan-500/5 px-2',
+      ]"
     >
       <div class="min-w-0 flex-1">
         <p class="font-mono text-sm text-slate-100">
@@ -63,6 +68,16 @@ function regrasDe(m) {
         </div>
       </div>
 
+      <BaseButton
+        variante="fantasma"
+        tamanho="sm"
+        class="shrink-0"
+        :disabled="editandoId === m.id"
+        @click="$emit('editar', m)"
+      >
+        <AppIcon nome="lapis" class="h-3 w-3" />
+        Editar
+      </BaseButton>
       <BaseButton
         variante="fantasma"
         tamanho="sm"

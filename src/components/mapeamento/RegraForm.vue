@@ -4,18 +4,33 @@ import BaseButton from '@/components/BaseButton.vue'
 
 /**
  * Formulário de regras de UMA coluna. Como o FonteForm, não chama a API:
- * só emite 'salvar' com o corpo pronto; quem faz o POST é o ModalMapeamento.
+ * só emite 'salvar' com o corpo pronto; quem faz o POST (ou o PUT) é o MapeamentoPainel.
  *
- * Sugestão automática: ao abrir, o campo de destino vem com o MESMO NOME da
- * coluna de origem e o tipo de dado com o tipo detectado. Tudo editável.
+ * Edição: com a prop `regra` (um item de GET /mapeamentos), abre preenchido com
+ * ela; o campo de destino dela não conta como "já mapeado".
+ *
+ * Destino: a tabela e o campo são escolhidos numa lista (GET /destinos), com
+ * os campos que a tabela realmente tem; o back recusa o que não estiver nela.
+ * Sugestão automática: a tabela que a fonte já usa, o campo de MESMO NOME da
+ * coluna de origem (se existir) e o tipo de dado do campo escolhido. Tudo editável.
  *
  * Os blocos aparecem conforme o tipo escolhido, espelhando o que o back aceita:
- *   GEOMETRIA → política da geometria (obrigatória) e conferência do Paraná
- *   DATA      → formato de origem
+ *   GEOMETRIA → tipo esperado (polígono, ponto, linha), política da geometria
+ *               (obrigatória) e conferência do Paraná
+ *   DATA      → formato de origem (uma ou mais máscaras, ou EPOCH_MS)
+ *   DECIMAL   → vírgula como separador (formato_origem VIRGULA)
  *   TEXTO     → domínio de valores, referência cruzada e validação de CPF/CNPJ
  */
 const props = defineProps({
   coluna: { type: Object, required: true },
+  /** o mapeamento sendo editado; null = mapeamento novo */
+  regra: { type: Object, default: null },
+  /** GET /destinos: [{ tabela, rotulo, campos: [{ nome, tipo, obrigatorio, observacao }] }] */
+  destinos: { type: Array, default: () => [] },
+  /** a tabela que a fonte já usa nos outros mapeamentos (uma fonte grava numa tabela) */
+  tabelaSugerida: { type: String, default: '' },
+  /** "tabela.campo" já ocupados por outra coluna desta fonte */
+  camposUsados: { type: Array, default: () => [] },
   dominios: { type: Array, default: () => [] },
   referencias: { type: Array, default: () => [] },
   salvando: { type: Boolean, default: false },
@@ -30,16 +45,21 @@ const politicas = [
   { valor: 'QUARENTENA', rotulo: 'Quarentena (reprova e isola o registro)' },
   { valor: 'CORRIGIR_E_REGISTRAR', rotulo: 'Corrigir e registrar' },
 ]
-// Sugestões, não lista fechada: o back aceita qualquer tabela de destino válida.
-const tabelasSugeridas = ['imovel_rural', 'municipio']
+const tiposGeometria = [
+  { valor: 'POLIGONO', rotulo: 'Polígono (imóvel, reserva legal, município)' },
+  { valor: 'PONTO', rotulo: 'Ponto (foco de calor)' },
+  { valor: 'LINHA', rotulo: 'Linha (hidrografia, estrada)' },
+]
 
 function formularioInicial(coluna) {
   const tipo = String(coluna.tipo ?? '').toUpperCase()
   return {
-    destinoTabela: '',
-    campoDestino: String(coluna.nome ?? '').toLowerCase(),
+    destinoTabela: props.tabelaSugerida || '',
+    campoDestino: '',
     tipoDado: tipos.includes(tipo) ? tipo : 'TEXTO',
     formatoOrigem: '',
+    tipoGeometria: 'POLIGONO',
+    decimalComVirgula: false,
     obrigatorio: false,
     chave: false,
     bloquearRegressao: false,
@@ -51,14 +71,79 @@ function formularioInicial(coluna) {
   }
 }
 
-const form = ref(formularioInicial(props.coluna))
+// O formato_origem guarda coisas diferentes conforme o tipo (ver formatoOrigem()).
+function daRegra(r) {
+  const formato = r.formatoOrigem ?? ''
+  return {
+    ...formularioInicial(props.coluna),
+    destinoTabela: r.destinoTabela,
+    campoDestino: r.campoDestino,
+    tipoDado: r.tipoDado,
+    formatoOrigem: r.tipoDado === 'DATA' ? formato : '',
+    tipoGeometria: tiposGeometria.some((g) => g.valor === formato) ? formato : 'POLIGONO',
+    decimalComVirgula: formato === 'VIRGULA',
+    obrigatorio: r.obrigatorio,
+    chave: r.chave,
+    bloquearRegressao: r.bloquearRegressao,
+    validarCpfCnpj: r.validarCpfCnpj,
+    politicaGeometria: r.politicaGeometria ?? '',
+    recortarPr: r.recortarPr,
+    dominioId: r.dominioId ?? '',
+    referenciaCruzada: r.referenciaCruzada ?? '',
+  }
+}
+
+const inicial = () => (props.regra ? daRegra(props.regra) : formularioInicial(props.coluna))
+const form = ref(inicial())
 const raiz = ref(null)
 
-// Outra coluna escolhida: recomeça do zero com a sugestão dela.
-watch(
-  () => props.coluna.id,
-  () => (form.value = formularioInicial(props.coluna)),
+const camposDaTabela = computed(
+  () => props.destinos.find((d) => d.tabela === form.value.destinoTabela)?.campos ?? [],
 )
+const campoEscolhido = computed(() => camposDaTabela.value.find((c) => c.nome === form.value.campoDestino))
+
+// O destino da própria regra em edição está livre para ela.
+function ehDaRegra(tabela, campo) {
+  return props.regra?.destinoTabela === tabela && props.regra?.campoDestino === campo
+}
+
+function ocupado(campo) {
+  const tabela = form.value.destinoTabela
+  return !ehDaRegra(tabela, campo.nome) && props.camposUsados.includes(`${tabela}.${campo.nome}`)
+}
+
+// Campo de mesmo nome da coluna, se a tabela tiver e estiver livre.
+// Na edição, voltar para a tabela da regra traz de volta o campo dela.
+function sugerirCampo() {
+  if (props.regra?.destinoTabela === form.value.destinoTabela) {
+    form.value.campoDestino = props.regra.campoDestino
+    return
+  }
+  const nome = String(props.coluna.nome ?? '').toLowerCase()
+  const igual = camposDaTabela.value.find((c) => c.nome === nome && !ocupado(c))
+  form.value.campoDestino = igual ? igual.nome : ''
+}
+
+// Outra coluna (ou outro mapeamento) escolhida: recomeça do zero com a sugestão dela.
+watch(
+  () => [props.coluna.id, props.regra?.id],
+  () => {
+    form.value = inicial()
+    sugerirCampo()
+  },
+)
+// Os destinos chegam depois da primeira abertura (carregados junto com os domínios).
+watch(() => props.destinos, sugerirCampo)
+
+// Trocar a tabela recomeça a escolha do campo.
+watch(() => form.value.destinoTabela, sugerirCampo)
+
+// O campo escolhido diz o tipo do dado na tabela de destino.
+// Na edição, o campo da própria regra mantém o tipo que já estava gravado.
+watch(campoEscolhido, (campo) => {
+  if (!campo) return
+  form.value.tipoDado = ehDaRegra(form.value.destinoTabela, campo.nome) ? props.regra.tipoDado : campo.tipo
+})
 
 const ehGeometria = computed(() => form.value.tipoDado === 'GEOMETRIA')
 const ehData = computed(() => form.value.tipoDado === 'DATA')
@@ -87,6 +172,14 @@ function vazioParaNulo(valor) {
   return v === '' || v === undefined ? null : v
 }
 
+// formato_origem: a máscara da DATA, VIRGULA no DECIMAL ou o tipo da GEOMETRIA.
+function formatoOrigem(f) {
+  if (ehData.value) return vazioParaNulo(f.formatoOrigem)
+  if (f.tipoDado === 'DECIMAL') return f.decimalComVirgula ? 'VIRGULA' : null
+  if (ehGeometria.value) return f.tipoGeometria
+  return null
+}
+
 /** Monta o MapeamentoRequest: só manda o que faz sentido para o tipo escolhido. */
 function submeter() {
   const f = form.value
@@ -95,7 +188,7 @@ function submeter() {
     destinoTabela: f.destinoTabela.trim(),
     campoDestino: f.campoDestino.trim(),
     tipoDado: f.tipoDado,
-    formatoOrigem: ehData.value ? vazioParaNulo(f.formatoOrigem) : null,
+    formatoOrigem: formatoOrigem(f),
     obrigatorio: f.obrigatorio,
     chave: f.chave,
     bloquearRegressao: f.bloquearRegressao,
@@ -115,28 +208,28 @@ onMounted(() => raiz.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <div>
         <label class="label" for="destinoTabela">Tabela de destino</label>
-        <input
-          id="destinoTabela"
-          v-model="form.destinoTabela"
-          class="input font-mono"
-          list="tabelas-sugeridas"
-          placeholder="imovel_rural"
-          required
-        />
-        <datalist id="tabelas-sugeridas">
-          <option v-for="t in tabelasSugeridas" :key="t" :value="t" />
-        </datalist>
+        <select id="destinoTabela" v-model="form.destinoTabela" class="input" required>
+          <option value="" disabled>Escolha a tabela</option>
+          <option v-for="d in destinos" :key="d.tabela" :value="d.tabela">
+            {{ d.rotulo }} — {{ d.tabela }}
+          </option>
+        </select>
       </div>
 
       <div>
         <label class="label" for="campoDestino">Campo de destino</label>
-        <input
+        <select
           id="campoDestino"
           v-model="form.campoDestino"
           class="input font-mono"
-          placeholder="tipo_imovel"
+          :disabled="!form.destinoTabela"
           required
-        />
+        >
+          <option value="" disabled>{{ form.destinoTabela ? 'Escolha o campo' : 'Escolha a tabela antes' }}</option>
+          <option v-for="c in camposDaTabela" :key="c.nome" :value="c.nome" :disabled="ocupado(c)">
+            {{ c.nome }} · {{ c.tipo.toLowerCase() }}{{ c.obrigatorio ? ' · obrigatório' : '' }}{{ ocupado(c) ? ' · já mapeado' : '' }}
+          </option>
+        </select>
       </div>
 
       <div>
@@ -146,6 +239,11 @@ onMounted(() => raiz.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest
         </select>
       </div>
     </div>
+    <p v-if="campoEscolhido?.observacao" class="-mt-2 text-xs text-slate-500">{{ campoEscolhido.observacao }}</p>
+    <p v-else-if="campoEscolhido?.obrigatorio" class="-mt-2 text-xs text-slate-500">
+      A tabela não aceita este campo vazio: marque &ldquo;Obrigatório&rdquo; para o registro sem valor
+      ir para a quarentena em vez de falhar a carga.
+    </p>
 
     <!-- Regras gerais -->
     <fieldset class="rounded-xl border border-slate-800 p-3">
@@ -178,6 +276,12 @@ onMounted(() => raiz.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest
       </legend>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
+          <label class="label" for="tipoGeometria">Tipo esperado</label>
+          <select id="tipoGeometria" v-model="form.tipoGeometria" class="input">
+            <option v-for="g in tiposGeometria" :key="g.valor" :value="g.valor">{{ g.rotulo }}</option>
+          </select>
+        </div>
+        <div>
           <label class="label" for="politicaGeometria">Política para geometria inválida</label>
           <select id="politicaGeometria" v-model="form.politicaGeometria" class="input" required>
             <option v-for="p in politicas" :key="p.valor" :value="p.valor">{{ p.rotulo }}</option>
@@ -202,9 +306,21 @@ onMounted(() => raiz.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest
         id="formatoOrigem"
         v-model="form.formatoOrigem"
         class="input font-mono"
-        placeholder="dd/MM/yyyy"
+        placeholder="DD/MM/YYYY"
       />
+      <p class="mt-1 text-xs text-slate-500">
+        Máscara do Oracle (ex.: <span class="font-mono">YYYY/MM/DD HH24:MI:SS</span>). Mais de um
+        formato na mesma coluna: separe com <span class="font-mono">|</span> (vale o primeiro que
+        converter). Milissegundos desde 1970, como o ArcGIS: <span class="font-mono">EPOCH_MS</span>.
+        Vazio: <span class="font-mono">DD/MM/YYYY</span>.
+      </p>
     </div>
+
+    <!-- Só para DECIMAL -->
+    <label v-if="form.tipoDado === 'DECIMAL'" class="flex items-center gap-2 text-sm text-slate-300">
+      <input v-model="form.decimalComVirgula" type="checkbox" class="accent-cyan-500" />
+      A origem usa vírgula como separador decimal (ex.: 25,9)
+    </label>
 
     <!-- Só para TEXTO -->
     <fieldset v-if="ehTexto" class="rounded-xl border border-slate-800 p-3">
@@ -244,7 +360,9 @@ onMounted(() => raiz.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest
 
     <div class="flex items-center justify-end gap-2">
       <BaseButton type="button" variante="fantasma" @click="$emit('cancelar')">Cancelar</BaseButton>
-      <BaseButton type="submit" :carregando="salvando">Salvar mapeamento</BaseButton>
+      <BaseButton type="submit" :carregando="salvando">
+        {{ regra ? 'Salvar alterações' : 'Salvar mapeamento' }}
+      </BaseButton>
     </div>
   </form>
 </template>

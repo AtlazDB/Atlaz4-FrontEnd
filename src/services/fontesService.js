@@ -155,6 +155,17 @@ export async function executarColeta(fonteId) {
 }
 
 /**
+ * Edita uma fonte (a sigla não muda: é a pasta dos arquivos na zona bruta).
+ *   PUT /fontes/:id   200 → a fonte · 400 → { mensagem, campos } · 404
+ * Cabeçalhos e credencial nulos ficam como estão (a API nunca os devolve).
+ * Trocar para MANUAL apaga o link e tira a fonte da coleta automática.
+ */
+export async function atualizarFonte(fonteId, fonte) {
+  const { data } = await http.put(`/fontes/${fonteId}`, fonte)
+  return data
+}
+
+/**
  * Já implementado como exemplo do padrão que os TODOs acima seguem.
  * Use como referência quando travar.
  */
