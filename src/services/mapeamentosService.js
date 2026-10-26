@@ -40,6 +40,16 @@ export async function listarReferenciasCruzadas() {
 }
 
 /**
+ * Tabelas da Zona Tratada que o mapeamento pode preencher, com os campos de cada uma.
+ *   GET /destinos → [ { tabela, rotulo, campos: [ { nome, tipo, obrigatorio, observacao } ] } ]
+ * tipo: TEXTO, INTEIRO, DECIMAL, DATA ou GEOMETRIA. O back recusa destino fora desta lista.
+ */
+export async function listarDestinos() {
+  const { data } = await http.get('/destinos')
+  return data
+}
+
+/**
  * Cria o mapeamento de uma coluna, com as regras de qualidade.
  *   POST /fontes/:id/mapeamentos
  *        201 → a regra criada
@@ -52,6 +62,17 @@ export async function listarReferenciasCruzadas() {
  */
 export async function criarMapeamento(fonteId, mapeamento) {
   const { data } = await http.post(`/fontes/${fonteId}/mapeamentos`, mapeamento)
+  return data
+}
+
+/**
+ * Edita destino e regras de um mapeamento; a coluna de origem não muda.
+ * Vale a partir do próximo processamento.
+ *   PUT /fontes/:fonteId/mapeamentos/:mapeamentoId   (mesmo corpo do criar)
+ *        200 → a regra · 400 → { mensagem, campos } · 404 · 409 (campo de destino ocupado)
+ */
+export async function atualizarMapeamento(fonteId, mapeamentoId, mapeamento) {
+  const { data } = await http.put(`/fontes/${fonteId}/mapeamentos/${mapeamentoId}`, mapeamento)
   return data
 }
 

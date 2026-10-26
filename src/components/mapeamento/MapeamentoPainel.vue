@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ColunasDetectadas from '@/components/mapeamento/ColunasDetectadas.vue'
 import MapeamentosTabela from '@/components/mapeamento/MapeamentosTabela.vue'
@@ -9,7 +9,9 @@ import {
   listarMapeamentos,
   listarDominios,
   listarReferenciasCruzadas,
+  listarDestinos,
   criarMapeamento,
+  atualizarMapeamento,
   excluirMapeamento,
 } from '@/services/mapeamentosService'
 
@@ -42,13 +44,23 @@ const erro = ref('')
 
 // --- Formulário de regras -----------------------------------------
 const emEdicao = ref(null) // a coluna que está sendo mapeada, ou null
+const regraEmEdicao = ref(null) // o mapeamento aberto para editar, ou null (mapeamento novo)
 const salvando = ref(false)
 const erroForm = ref('')
 const sucesso = ref('')
 const removendo = ref([]) // ids de mapeamentos sendo removidos
 const dominios = ref([])
 const referencias = ref([])
+const destinos = ref([])
 let apoioCarregado = false
+
+// Uma fonte grava numa tabela só: a mais usada nos mapeamentos já feitos vira a sugestão.
+const tabelaSugerida = computed(() => {
+  const contagem = {}
+  for (const m of mapeamentos.value) contagem[m.destinoTabela] = (contagem[m.destinoTabela] ?? 0) + 1
+  return Object.entries(contagem).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+})
+const camposUsados = computed(() => mapeamentos.value.map((m) => `${m.destinoTabela}.${m.campoDestino}`))
 
 async function carregar() {
   if (!props.fonte) return
@@ -68,28 +80,43 @@ async function carregar() {
   }
 }
 
-// Domínios e referências mudam raramente: busca uma vez por abertura da tela.
+// Domínios, referências e destinos mudam raramente: busca uma vez por abertura da tela.
 async function carregarApoio() {
   if (apoioCarregado) return
   try {
-    const [d, r] = await Promise.all([listarDominios(), listarReferenciasCruzadas()])
+    const [d, r, t] = await Promise.all([listarDominios(), listarReferenciasCruzadas(), listarDestinos()])
     dominios.value = d
     referencias.value = r
+    destinos.value = t
     apoioCarregado = true
   } catch (e) {
-    erroForm.value = `Não deu para carregar domínios e referências: ${e.message}`
+    erroForm.value = `Não deu para carregar domínios, referências e destinos: ${e.message}`
   }
 }
 
 async function iniciarMapeamento(coluna) {
   sucesso.value = ''
   erroForm.value = ''
+  regraEmEdicao.value = null
   emEdicao.value = coluna
+  await carregarApoio()
+}
+
+/** Abre o formulário preenchido com um mapeamento já feito. */
+async function editarMapeamento(mapeamento) {
+  sucesso.value = ''
+  erroForm.value = ''
+  regraEmEdicao.value = mapeamento
+  emEdicao.value = colunas.value.find((c) => c.id === mapeamento.colunaId) ?? {
+    id: mapeamento.colunaId,
+    nome: mapeamento.colunaNome,
+  }
   await carregarApoio()
 }
 
 function cancelarMapeamento() {
   emEdicao.value = null
+  regraEmEdicao.value = null
   erroForm.value = ''
 }
 
@@ -97,9 +124,15 @@ async function salvar(corpo) {
   salvando.value = true
   erroForm.value = ''
   try {
-    await criarMapeamento(props.fonte.id, corpo)
-    sucesso.value = `Coluna "${emEdicao.value.nome}" mapeada.`
+    if (regraEmEdicao.value) {
+      await atualizarMapeamento(props.fonte.id, regraEmEdicao.value.id, corpo)
+      sucesso.value = `Mapeamento de "${emEdicao.value.nome}" atualizado. Vale a partir do próximo processamento.`
+    } else {
+      await criarMapeamento(props.fonte.id, corpo)
+      sucesso.value = `Coluna "${emEdicao.value.nome}" mapeada.`
+    }
     emEdicao.value = null
+    regraEmEdicao.value = null
     await carregar() // a coluna passa de "nova" para "mapeada"
     emit('alterado')
   } catch (e) {
@@ -122,6 +155,7 @@ async function remover(mapeamento) {
   sucesso.value = ''
   try {
     await excluirMapeamento(props.fonte.id, mapeamento.id)
+    if (regraEmEdicao.value?.id === mapeamento.id) cancelarMapeamento()
     sucesso.value = `Mapeamento de "${mapeamento.colunaNome}" removido.`
     await carregar()
     emit('alterado')
@@ -138,6 +172,7 @@ watch(
   () => [props.ativo, props.fonte?.id],
   ([ativo]) => {
     emEdicao.value = null
+    regraEmEdicao.value = null
     erroForm.value = ''
     sucesso.value = ''
     if (ativo) carregar()
@@ -169,10 +204,15 @@ watch(
 
     <section v-if="emEdicao" class="mt-5 border-t border-slate-800 pt-5">
       <h3 class="mb-3 text-sm font-semibold text-white">
-        Mapear <span class="font-mono text-cyan-300">{{ emEdicao.nome }}</span>
+        {{ regraEmEdicao ? 'Editar mapeamento de' : 'Mapear' }}
+        <span class="font-mono text-cyan-300">{{ emEdicao.nome }}</span>
       </h3>
       <RegraForm
         :coluna="emEdicao"
+        :regra="regraEmEdicao"
+        :destinos="destinos"
+        :tabela-sugerida="tabelaSugerida"
+        :campos-usados="camposUsados"
         :dominios="dominios"
         :referencias="referencias"
         :salvando="salvando"
@@ -189,7 +229,13 @@ watch(
           {{ mapeamentos.length }}
         </span>
       </h3>
-      <MapeamentosTabela :mapeamentos="mapeamentos" :removendo="removendo" @remover="remover" />
+      <MapeamentosTabela
+        :mapeamentos="mapeamentos"
+        :removendo="removendo"
+        :editando-id="regraEmEdicao?.id ?? null"
+        @editar="editarMapeamento"
+        @remover="remover"
+      />
       <p class="mt-3 text-[11.5px] text-slate-500">
         Colunas sem mapeamento não se perdem: ficam guardadas como atributos de cada registro na
         quarentena e na zona bruta.

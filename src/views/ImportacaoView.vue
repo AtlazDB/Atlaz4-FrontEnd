@@ -15,6 +15,7 @@ import { listarColunas } from '@/services/mapeamentosService'
 import {
   listarFontes,
   criarFonte,
+  atualizarFonte,
   enviarArquivo,
   testarLink,
   executarColeta,
@@ -114,6 +115,7 @@ const erro = ref('')
 
 // --- Estado do formulário -----------------------------------------
 const mostrandoForm = ref(false)
+const emEdicao = ref(null) // a fonte aberta no formulário para editar, ou null
 const salvando = ref(false)
 const formRef = ref(null)
 
@@ -207,9 +209,30 @@ async function carregar() {
  *      e chame avisar('ok', 'Fonte cadastrada.')
  *   e) no catch, avisar('erro', e.message)
  */
+function editarFonte(fonte) {
+  limparTeste()
+  emEdicao.value = fonte
+  mostrandoForm.value = true
+}
+
+function fecharForm() {
+  mostrandoForm.value = false
+  emEdicao.value = null
+}
+
 async function salvarFonte(dados) {
   salvando.value = true
   try {
+    if (emEdicao.value) {
+      const atualizada = await atualizarFonte(emEdicao.value.id, dados)
+      const i = fontes.value.findIndex((f) => f.id === atualizada.id)
+      if (i !== -1) fontes.value[i] = atualizada
+      if (selecionada.value?.id === atualizada.id) selecionada.value = atualizada
+      fecharForm()
+      limparTeste()
+      avisar('ok', 'Fonte atualizada.')
+      return
+    }
     const nova = await criarFonte(dados)
     fontes.value.unshift(nova)
     mostrandoForm.value = false
@@ -551,10 +574,14 @@ onBeforeUnmount(() => {
           <b class="font-medium text-slate-200">coleta automática</b>, quando o sistema busca no link
           do órgão.
         </p>
-        <BaseButton tamanho="sm" @click="mostrandoForm = true">
-          <AppIcon nome="mais" traco="2.4" class="h-3 w-3" />
-          Nova fonte
-        </BaseButton>
+        <!-- As fontes do projeto já estão cadastradas: o botão fica à vista, mas inativo.
+             Para mudar como uma fonte chega (link ou upload), use "Editar" na página dela. -->
+        <span title="As fontes do projeto já estão cadastradas. Para mudar uma delas, abra a fonte e use Editar.">
+          <BaseButton tamanho="sm" disabled>
+            <AppIcon nome="mais" traco="2.4" class="h-3 w-3" />
+            Nova fonte
+          </BaseButton>
+        </span>
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -625,6 +652,10 @@ onBeforeUnmount(() => {
             </span>
             <StatusBadge :status="selecionada.status" />
             <span class="text-[12px] text-slate-500">· {{ selecionada.orgao }}</span>
+            <BaseButton class="ml-auto" variante="fantasma" tamanho="sm" @click="editarFonte(selecionada)">
+              <AppIcon nome="lapis" class="h-3.5 w-3.5" />
+              Editar
+            </BaseButton>
           </div>
           <h1 class="mt-2 font-display text-lg font-semibold text-white">{{ selecionada.nome }}</h1>
 
@@ -732,11 +763,12 @@ onBeforeUnmount(() => {
     <BaseGaveta
       :aberto="mostrandoForm"
       sobre="Fontes de dados"
-      titulo="Nova fonte de dados"
-      @fechar="mostrandoForm = false"
+      :titulo="emEdicao ? `Editar ${emEdicao.sigla}` : 'Nova fonte de dados'"
+      @fechar="fecharForm"
     >
       <FonteForm
         ref="formRef"
+        :fonte="emEdicao"
         :salvando="salvando"
         :testando="testando"
         :teste="teste"
@@ -744,7 +776,7 @@ onBeforeUnmount(() => {
         @salvar="salvarFonte"
         @testar-link="testarLinkDoFormulario"
         @limpar-teste="limparTeste"
-        @cancelar="mostrandoForm = false"
+        @cancelar="fecharForm"
       />
     </BaseGaveta>
   </div>
