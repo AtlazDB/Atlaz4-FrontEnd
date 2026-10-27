@@ -50,7 +50,8 @@ import http from './http'
  */
 export async function listarFontes(busca = '') {
   const { data } = await http.get('/fontes')
-  return data
+  // Fonte desativada no banco (ativa = 0) some das telas.
+  return data.filter((f) => f.status !== 'inativa')
 }
 
 /**
