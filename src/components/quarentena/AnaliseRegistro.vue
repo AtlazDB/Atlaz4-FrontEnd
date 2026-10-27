@@ -256,6 +256,8 @@ function abrirEditor() {
             >
               {{ modoGeometria === 'editar' ? 'Concluir edição' : 'Editar vértices' }}
             </button>
+            <!-- Desligado por ora: o botão chama o mesmo fix_geometry que o processamento já tentou,
+                 então para as fontes que corrigem sozinhas ele só repete a falha.
             <button
               v-if="geometria"
               type="button"
@@ -265,6 +267,7 @@ function abrirEditor() {
             >
               {{ sugerindo ? 'Corrigindo…' : 'Corrigir automaticamente' }}
             </button>
+            -->
             <template v-if="geometriaPendente">
               <button type="button" class="botao-geometria" :disabled="salvandoGeometria" @click="desfazerGeometria">
                 Desfazer
