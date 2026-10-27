@@ -18,7 +18,7 @@ export const TIPOS_ERRO = {
     familia: 'Geometria',
     nome: 'Geometria inválida',
     explica: 'O contorno cruza a si mesmo ou não fecha. Sem corrigir, não dá para calcular área nem cruzar com outras camadas.',
-    como: 'Use "Corrigir automaticamente", edite os vértices no mapa ou o GeoJSON, salve e revalide. O ponto do problema aparece em vermelho.',
+    como: 'Edite os vértices no mapa ou o GeoJSON, salve e revalide. O ponto do problema aparece em vermelho.',
   },
   GEOMETRIA_TIPO_INCOMPATIVEL: {
     familia: 'Geometria',
